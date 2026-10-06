@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- Modified by Komal & Antigravity (Adani Project) -->
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vigilo — Sign in</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <div class="login-brand">
+      <img class="login-logo" src="{{ url_for('static', filename='img/vigilo-logo.png') }}"
+           alt="VIGILO — PLC Logic Drift & Unauthorized Change Detection">
+    </div>
+    <form method="post" class="login-form">
+      {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+      <label>Username<input name="username" autocomplete="username" autofocus required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <div class="login-accounts">
+      <div class="login-accounts-head">Quick Access Profiles <span>— presentation mode · 6 OT/ICS roles</span></div>
+      <div class="cred-grid">
+      <button type="button" class="cred-row" data-user="operator" data-pass="operator123">
+        <span class="cred-top"><span class="cred-role">Operator (Control Room)</span><span class="cred-id">operator / operator123</span></span>
+        <span class="cred-note">live plant + alarm feed · acknowledge alarms</span>
+      </button>
+      <button type="button" class="cred-row" data-user="engineer" data-pass="engineer123">
+        <span class="cred-top"><span class="cred-role">C&amp;I / Control Engineer</span><span class="cred-id">engineer / engineer123</span></span>
+        <span class="cred-note">+ baseline lock/restore · program diff · safe-state</span>
+      </button>
+      <button type="button" class="cred-row" data-user="netsec" data-pass="netsec123">
+        <span class="cred-top"><span class="cred-role">OT Network / Security Engineer</span><span class="cred-id">netsec / netsec123</span></span>
+        <span class="cred-note">+ quarantine rogue devices · network response</span>
+      </button>
+      <button type="button" class="cred-row" data-user="soc" data-pass="soc123">
+        <span class="cred-top"><span class="cred-role">SOC Analyst</span><span class="cred-id">soc / soc123</span></span>
+        <span class="cred-note">+ evidence log · forensic PDF · quarantine · safe-state</span>
+      </button>
+      <button type="button" class="cred-row" data-user="vendor" data-pass="vendor123">
+        <span class="cred-top"><span class="cred-role">Vendor / OEM Contractor</span><span class="cred-id">vendor / vendor123</span></span>
+        <span class="cred-note">scoped, read-only · heavily monitored (no actions)</span>
+      </button>
+      <button type="button" class="cred-row" data-user="ciso" data-pass="ciso123">
+        <span class="cred-top"><span class="cred-role">CISO / Plant Cyber Head</span><span class="cred-id">ciso / ciso123</span></span>
+        <span class="cred-note">full cross-role authority · incident command · compliance</span>
+      </button>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var form = document.querySelector('.login-form');
+      var rows = document.querySelectorAll('.cred-row');
+      rows.forEach(function (row) {
+        row.addEventListener('click', function () {
+          form.username.value = row.dataset.user;
+          form.password.value = row.dataset.pass;
+          rows.forEach(function (r) { r.classList.remove('sel'); });
+          row.classList.add('sel');
+          form.querySelector('button[type=submit]').focus();
+        });
+        row.addEventListener('dblclick', function () { form.submit(); });
+      });
+    })();
+  </script>
+</body>
+</html>

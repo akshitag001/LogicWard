@@ -1,0 +1,385 @@
+\documentclass[11pt,a4paper]{article}
+
+% ------------------------------------------------------------------
+% LogicWard — Demo Guide (presenter runbook)
+% Compile:  pdflatex (run twice)  or  latexmk -pdf
+% ------------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.1cm]{geometry}
+\usepackage[dvipsnames,table]{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage[most]{tcolorbox}
+\usepackage{pdflscape}
+\usepackage{underscore}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{navy}{HTML}{14304F}
+\definecolor{navy2}{HTML}{1D4370}
+\definecolor{accent}{HTML}{3987E5}
+\definecolor{ink}{HTML}{1F2937}
+\definecolor{muted}{HTML}{5B6B80}
+\definecolor{good}{HTML}{0E7A0E}
+\definecolor{warn}{HTML}{A16207}
+\definecolor{serious}{HTML}{C05621}
+\definecolor{critical}{HTML}{C02626}
+\definecolor{page}{HTML}{EEF0F4}
+\definecolor{hair}{HTML}{DBE0E8}
+\definecolor{codebg}{HTML}{F6F8FB}
+\definecolor{critbg}{HTML}{FBE8E8}
+\definecolor{highbg}{HTML}{FBEEE6}
+\definecolor{medbg}{HTML}{FDF4E3}
+\definecolor{lowbg}{HTML}{EEF1F5}
+
+\hypersetup{colorlinks=true,linkcolor=navy2,urlcolor=accent}
+
+\titleformat{\section}{\Large\bfseries\color{navy}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries\color{navy2}}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.3em}{0.5em}
+
+\pagestyle{fancy}\fancyhf{}
+\setlength{\headheight}{24pt}\addtolength{\topmargin}{-10pt}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[L]{\small\color{muted}\textbf{LogicWard}\,\textbullet\, Demo Guide}
+\fancyhead[R]{\small\color{muted}Presenter Runbook}
+\fancyfoot[C]{\small\color{muted}\thepage}
+
+\lstdefinestyle{lw}{basicstyle=\ttfamily\small\color{ink},backgroundcolor=\color{codebg},
+  frame=single,framesep=6pt,rulecolor=\color{hair},breaklines=true,columns=fullflexible,
+  keepspaces=true,showstringspaces=false,xleftmargin=4pt,xrightmargin=4pt,aboveskip=7pt,belowskip=7pt}
+\lstset{style=lw}
+
+\newtcolorbox{say}[1][]{colback=accent!7,colframe=accent,boxrule=0.8pt,left=8pt,right=8pt,
+  top=5pt,bottom=5pt,arc=2pt,#1}
+\newtcolorbox{note}[1][]{colback=page,colframe=hair,boxrule=1pt,left=8pt,right=8pt,
+  top=5pt,bottom=5pt,arc=2pt,#1}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcommand{\sev}[2]{\colorbox{#1}{\small\strut\,#2\,}}
+\newcommand{\crit}{\sev{critbg}{\color{critical}\textbf{critical}}}
+\newcommand{\high}{\sev{highbg}{\color{serious}\textbf{high}}}
+\newcommand{\med}{\sev{medbg}{\color{warn}\textbf{medium}}}
+\newcommand{\low}{\sev{lowbg}{\color{muted}\textbf{low}}}
+
+\begin{document}
+
+% ---------------- title ----------------
+\begin{titlepage}
+\thispagestyle{empty}
+\vspace*{1.4cm}
+{\color{navy}\rule{\textwidth}{2.5pt}}\\[0.5cm]
+{\Huge\bfseries\color{navy} LogicWard --- Demo Guide}\\[0.35cm]
+{\LARGE\color{navy2} How to run the demo, and read every detection}\\[0.5cm]
+{\large\color{ink} A step-by-step presenter runbook: which script to run from where,
+what the attacker does, where it lands, how LogicWard detects it, which dashboard view
+shows it, and the exact MITRE ATT\&CK for ICS technique behind each alert.}\\[0.4cm]
+{\color{navy}\rule{\textwidth}{2.5pt}}\\[1.0cm]
+
+\begin{note}
+\large
+\textbf{The whole demo is one command:}\\[4pt]
+\code{python -m logicward.attacker.demo_sequence}\\[6pt]
+Open \textbf{http://localhost:8080/} (login \code{soc/soc123}) and watch the attacks land.
+A full run produces \textbf{14 events --- 4 critical, 2 high, 3 medium, 5 low}.
+\end{note}
+
+\vfill
+{\small\color{muted} Repo: https://github.com/positromen/Adani-Project-OT \quad\textbullet\quad
+See also USAGE.md (full how-to) and DESIGN.md / LogicWard\_Design.pdf (architecture).}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ==================================================================
+\section{The cast --- who is who, and where things run}
+
+LogicWard has three roles. In the \textbf{one-command demo} all three run on your
+laptop (an \emph{embedded} PLC); in the \textbf{real deployment} they are three separate
+machines on the same Wi-Fi. The detection logic is identical either way.
+
+\begin{tabularx}{\textwidth}{@{}p{3.1cm} L p{4.4cm}@{}}
+\toprule
+\textbf{Role} & \textbf{What it is} & \textbf{Where it runs} \\
+\midrule
+\textbf{The PLC (victim)} & Thermal power-plant controller: a Modbus TCP server + its
+  ladder program (a real Rockwell \code{.L5X}) + program-download endpoint. &
+  Raspberry Pi (real) \emph{or} embedded in the demo process (laptop). \\
+\addlinespace
+\textbf{The Attacker} & A toolkit that tampers with the PLC: setpoint writes, program
+  downloads, a Modbus flood, a rogue device. & \code{logicward.attacker} --- a 2nd box
+  (real) \emph{or} the demo script (laptop). \\
+\addlinespace
+\textbf{LogicWard (defender)} & The detection engine + SOC dashboard that diffs the live
+  PLC against a signed baseline and raises alerts. & The laptop --- \code{localhost:8080}. \\
+\bottomrule
+\end{tabularx}
+
+\begin{note}
+\textbf{The mental model for the audience:} \emph{``An attacker who can reach a power-plant
+PLC quietly rewrites its safety logic. LogicWard sits beside the PLC, holds a
+cryptographically-signed copy of the approved program, and the instant the running logic
+or a live value drifts from that baseline it raises a severity-ranked, MITRE-mapped
+alert --- naming what changed, and how.''}
+\end{note}
+
+% ==================================================================
+\section{Running the demo}
+
+\subsection{Option A --- one command (recommended for judging)}
+From the project root on the laptop:
+\begin{lstlisting}
+python -m logicward.attacker.demo_sequence          # ~90s, watchable pacing
+python -m logicward.attacker.demo_sequence --fast    # ~15s, quick run
+\end{lstlisting}
+This brings up the SOC dashboard + an embedded thermal PLC + the program endpoints, then
+runs the whole attack story with narration in the terminal. Open
+\textbf{http://localhost:8080/} (login \code{soc/soc123}) and keep it on screen.
+
+\subsection{Option B --- drive it yourself}
+\begin{lstlisting}
+# Terminal 1 - the SOC dashboard (embedded PLC)
+python -m logicward.dashboard.app
+
+# Terminal 2 - the program endpoints (so program-download attacks land)
+python -m logicward.plant.logic_store
+
+# Terminal 3 - fire attacks one at a time (see the catalogue in section 4)
+python -m logicward.attacker.attacks logic-inversion
+python -m logicward.attacker.attacks ddos --count 800
+\end{lstlisting}
+
+\subsection{Option C --- the real two-machine setup (verified on hardware)}
+Pi runs the PLC + sensor agent; the laptop runs the dashboard; a third box attacks. This has
+been \textbf{run and verified end-to-end on a Raspberry Pi 4 + laptop over Wi-Fi} --- live cyber
+detection (laptop$\rightarrow$Pi Modbus + program pull) and agent event-forwarding
+(Pi$\rightarrow$laptop ingest) both confirmed. Full runbook in \textbf{USAGE.md \S7}. In short:
+\begin{lstlisting}
+# On the Pi:      bash deploy/pi_bootstrap.sh <laptop-ip>   &&   bash deploy/run_pi.sh
+# On the laptop:  .\deploy\run_laptop.ps1 -PiHost siddhesh.local
+# From attacker:  python -m logicward.attacker.attacks --host siddhesh.local logic-inversion
+\end{lstlisting}
+\begin{note}
+\textbf{Campus Wi-Fi tip (learned live):} enterprise networks often enable client isolation
+that blocks laptop$\leftrightarrow$Pi traffic --- a phone hotspot (both devices on it) is the
+reliable fallback. A Wi-Fi-only Pi runs the physical sensors (\code{link\_watch},
+\code{gpio\_tamper}) in fallback; the cyber + resource planes are fully live.
+\end{note}
+
+\begin{say}
+\textbf{Say:} ``Everything you're about to see is two computers talking over Wi-Fi --- an
+attacker on one, the plant and its guardian on the other. For this screen it's one laptop,
+but the code path is identical.''
+\end{say}
+
+% ==================================================================
+\section{The story, act by act}
+
+Each act below lists: the \textbf{command}, \textbf{where the attack lands}, \textbf{how
+LogicWard detects it}, \textbf{which dashboard view shows it}, the \textbf{MITRE ATT\&CK
+for ICS} technique, and a \textbf{line to say}.
+
+\subsection{Act 1 --- Normal operations}
+Nothing is attacked. The plant runs nominal, the baseline is HMAC-locked, the live program
+matches the baseline, the alert feed is empty.
+\begin{itemize}[leftmargin=1.3em,itemsep=1pt]
+  \item \textbf{Dashboard:} \emph{Overview} --- baseline integrity \code{VALID}, ``program
+        in sync'', zero alerts. \emph{Live Plant} shows drum level, steam pressure, turbine
+        speed all nominal.
+\end{itemize}
+\begin{say}\textbf{Say:} ``A thermal power plant PLC, continuously verified against a
+cryptographically-signed approved program. Quiet board, green baseline.''\end{say}
+
+\subsection{Act 2 --- Reconnaissance: a rogue device}
+\textbf{Attack:} an unapproved engineering laptop joins the OT network.
+\begin{itemize}[leftmargin=1.3em,itemsep=1pt]
+  \item \textbf{Command:} \code{python -m logicward.attacker.attacks rogue}
+  \item \textbf{Lands on:} the OT LAN segment (an ARP announcement) --- not the PLC yet.
+  \item \textbf{Detected by:} \code{arp\_watch} (physical plane, on the Pi agent) --- MAC not
+        on the approved allowlist.
+  \item \textbf{Event:} \code{physical.rogue\_device} \quad\med
+  \item \textbf{Shown on:} \emph{Alerts} feed.
+  \item \textbf{MITRE:} Initial Access \textbullet\ \textbf{Rogue Master} \textbullet\ \code{T0848}
+\end{itemize}
+\begin{say}\textbf{Say:} ``Before touching the PLC, the attacker's machine appears on the
+OT segment. An unknown MAC on this network is itself an alert --- Rogue Master, T0848.''\end{say}
+
+\subsection{Act 3 --- Silent logic tampering}
+The core of the demo: five ways an attacker rewrites the PLC's safety logic.
+
+\textbf{(3a) Setpoint drift --- over Modbus.}
+\begin{itemize}[leftmargin=1.3em,itemsep=1pt]
+  \item \textbf{Command:} \code{python -m logicward.attacker.attacks setpoint-drift} \quad(drum-level trip \code{220 -> 40} mm)
+  \item \textbf{Lands on:} a Modbus holding register on the PLC (function code 06 write).
+  \item \textbf{Detected by:} the drift engine's \textbf{register diff} (live Modbus vs baseline snapshot).
+  \item \textbf{Event:} \code{cyber.setpoint\_drift} \quad\high\ (safety-critical setpoint)
+  \item \textbf{Shown on:} \emph{Alerts}, and the changed value on \emph{Program Diff} / \emph{Live Plant}.
+  \item \textbf{MITRE:} Impair Process Control \textbullet\ \textbf{Modify Parameter} \textbullet\ \code{T0836}
+\end{itemize}
+
+\textbf{(3b--3d) Program downloads --- structural logic changes.} Each command pushes a
+tampered \code{.L5X} to the PLC's program-download endpoint; LogicWard canonicalizes and
+diffs it, and the passive FIM also fires on the file change.
+\begin{itemize}[leftmargin=1.3em,itemsep=2pt]
+  \item \textbf{Logic inversion} --- \code{attacks logic-inversion} --- flips the drum-level
+        trip compare \code{LES$\rightarrow$GRT} (the interlock now fires backwards).\\
+        Event \code{cyber.logic\_inversion} \crit\ \textbullet\ Persistence \textbullet\ \textbf{Modify Program} \textbullet\ \code{T0889}
+  \item \textbf{Condition stripping} --- \code{attacks condition-stripping} --- removes the
+        running-interlock from the furnace-flame trip (a safety input deleted).\\
+        Event \code{cyber.condition\_stripping} \crit\ \textbullet\ Persistence \textbullet\ \textbf{Modify Program} \textbullet\ \code{T0889}
+  \item \textbf{Coil hijack} --- \code{attacks coil-hijack} --- repoints the feedwater-trip
+        output coil to a different actuator.\\
+        Event \code{cyber.coil\_hijack} \crit\ \textbullet\ Persistence \textbullet\ \textbf{Modify Program} \textbullet\ \code{T0889}
+\end{itemize}
+
+\textbf{(3e) Rung injection --- a backdoor rung.}
+\begin{itemize}[leftmargin=1.3em,itemsep=1pt]
+  \item \textbf{Command:} \code{python -m logicward.attacker.attacks rung-injection} (unlatches the turbine trip)
+  \item \textbf{Detected by:} structural L5X diff (a new, unapproved rung appears) + FIM.
+  \item \textbf{Event:} \code{cyber.rung\_injection} \quad\crit
+  \item \textbf{Shown on:} \emph{Program Diff} --- the new rung highlighted green.
+  \item \textbf{MITRE:} Lateral Movement \textbullet\ \textbf{Program Download} \textbullet\ \code{T0843}
+\end{itemize}
+Each program download also raises \code{cyber.program\_file\_modified} \low\ from the
+\textbf{FIM} sensor (Persistence \textbullet\ Modify Program \textbullet\ \code{T0889}) --- a second,
+independent detection of the same tamper via the file system.
+
+\begin{say}\textbf{Say (on Program Diff):} ``This is the exact logic flip --- the drum-low
+trip compare inverted from LES to GRT. A harmless re-export with new timestamps would show
+\emph{nothing} here; a single changed instruction lights up red. That's canonicalization
+doing its job.''\end{say}
+
+\subsection{Act 4 --- Process manipulation \& impact}
+\textbf{(4a) Force a control coil.}
+\begin{itemize}[leftmargin=1.3em,itemsep=1pt]
+  \item \textbf{Command:} \code{python -m logicward.attacker.attacks force-coil} (forces the fuel-valve coil over Modbus)
+  \item \textbf{Detected by:} register diff (a control coil forced away from baseline).
+  \item \textbf{Event:} \code{cyber.register\_change} \quad\low
+  \item \textbf{MITRE:} Impair Process Control \textbullet\ \textbf{Unauthorized Command Message} \textbullet\ \code{T0855}
+\end{itemize}
+
+\textbf{(4b) DDoS flood.}
+\begin{itemize}[leftmargin=1.3em,itemsep=1pt]
+  \item \textbf{Command:} \code{python -m logicward.attacker.attacks ddos --count 800}
+  \item \textbf{Lands on:} the PLC's Modbus server (request flood).
+  \item \textbf{Detected by:} the \textbf{resource plane} (CPU spike on the PLC host).
+  \item \textbf{Event:} \code{resource.cpu\_spike} \quad\med
+  \item \textbf{MITRE:} Inhibit Response Function \textbullet\ \textbf{Denial of Service} \textbullet\ \code{T0814}
+\end{itemize}
+
+\subsection{Act 5 --- Physical tamper}
+\textbf{Attack:} the Ethernet cable is pulled and the enclosure door is opened.
+\begin{itemize}[leftmargin=1.3em,itemsep=1pt]
+  \item \textbf{Detected by:} \code{link\_watch} (carrier lost) and \code{gpio\_tamper}
+        (door switch) --- physical plane, on the Pi agent.
+  \item \textbf{Events:} \code{physical.link\_down} \med\ \textbullet\ \code{physical.enclosure\_open} \high
+  \item \textbf{MITRE:} \code{link\_down} $\rightarrow$ Denial of Service \code{T0814};
+        enclosure tamper has \emph{no} direct ICS technique (shown honestly as \code{N/A}).
+\end{itemize}
+\begin{say}\textbf{Say:} ``The same fabric that caught a logic edit also catches a pulled
+cable and an opened cabinet --- one event contract across cyber, physical, and resource.''\end{say}
+
+\subsection{Detection summary}
+\begin{note}
+After a full run the dashboard shows \textbf{14 events}:
+\quad\crit\,$\times4$ \quad \high\,$\times2$ \quad \med\,$\times3$ \quad \low\,$\times5$.\\
+Every event is in the append-only evidence log --- export the \textbf{signed PDF forensic
+report} from the \emph{Evidence} view. \textbf{Say:} ``One click --- a signed incident
+report an investigator can trust.''
+\end{note}
+
+% ==================================================================
+\section{Where each detection shows on the dashboard}
+Login \code{soc/soc123}. Roles: \code{operator} (read-only), \code{engineer}
+(+baseline), \code{soc} (everything).
+\begin{tabularx}{\textwidth}{@{}p{3.2cm} L@{}}
+\toprule
+\textbf{View} & \textbf{What to point at} \\
+\midrule
+\textbf{Overview} & Baseline integrity (\code{VALID}/\code{TAMPERED}), ``program in sync?'',
+  the severity count strip, live event total. The whole-health glance. \\
+\textbf{Program Diff} & The GitHub-style red/green side-by-side of baseline vs running L5X,
+  word-level highlights per changed rung, with severity + MITRE per change. \emph{Use this
+  for the logic mutations (3a--3e).} \\
+\textbf{Alerts} & The severity-ranked feed; each alert shows its \code{who / when / channel}
+  identity and its ATT\&CK-for-ICS technique. \emph{Use this for every act.} \\
+\textbf{Live Plant} & The thermal-plant mimic from live Modbus reads (drum level, steam
+  pressure, turbine speed, trip coils). \emph{Shows the physical effect of 3a / 4a.} \\
+\textbf{Evidence} & The forensic log + one-click signed PDF report. \\
+\bottomrule
+\end{tabularx}
+
+% ==================================================================
+\section{Judge Q\&A}
+\begin{itemize}[leftmargin=1.3em,itemsep=3pt]
+  \item \textbf{``Is the PLC program real?''} Yes --- a genuine Rockwell \code{.L5X} export.
+        We never \emph{execute} it; we parse, canonicalize (strip volatile
+        dates/revisions/CRC/comments), and diff it. That's why a benign re-export never
+        false-alarms but a single inverted instruction is caught.
+  \item \textbf{``How do you know the baseline itself wasn't tampered?''} It's HMAC-SHA256
+        signed; editing the approved copy breaks the signature and raises a \crit\
+        \code{baseline\_tamper} on its own --- and a passive file-integrity monitor watches
+        it in real time.
+  \item \textbf{``Real MITRE or made up?''} Rule-based, explainable, and \emph{verified}
+        against the live ATT\&CK for ICS matrix. Where no technique fits (physical enclosure
+        tamper) we say \code{N/A} rather than invent an ID.
+  \item \textbf{``Does it need the Pi?''} No --- it runs entirely on one laptop with an
+        embedded plant for judging, and splits cleanly onto a real Pi + attacker box over
+        Wi-Fi with the same code.
+  \item \textbf{``How is it verified?''} 98 automated checks across 7 suites
+        (\code{python -m logicward.tests.smoke\_*}).
+\end{itemize}
+
+% ==================================================================
+\clearpage
+\begin{landscape}
+\thispagestyle{fancy}
+\section{Master map --- attack $\rightarrow$ detection $\rightarrow$ MITRE}
+\renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}p{2.5cm} p{3.9cm} p{3.0cm} L p{2.9cm} p{3.2cm} c@{}}
+\toprule
+\textbf{Attack} & \textbf{Command (attacker)} & \textbf{Lands on / channel} &
+\textbf{Detected as (plane)} & \textbf{Dashboard view} & \textbf{MITRE ATT\&CK for ICS} & \textbf{Sev.} \\
+\midrule
+Rogue device & \code{attacks rogue} & OT LAN / ARP announce &
+  \code{physical.rogue\_device} (physical) & Alerts & Initial Access \textbullet\ Rogue Master \textbullet\ \code{T0848} & \med \\
+Setpoint drift & \code{attacks setpoint-drift} & PLC Modbus HR / FC06 write &
+  \code{cyber.setpoint\_drift} (cyber) & Alerts, Program Diff, Live Plant & Impair Process Control \textbullet\ Modify Parameter \textbullet\ \code{T0836} & \high \\
+Logic inversion & \code{attacks logic-inversion} & PLC program / download &
+  \code{cyber.logic\_inversion} (cyber) & Program Diff, Alerts & Persistence \textbullet\ Modify Program \textbullet\ \code{T0889} & \crit \\
+Condition stripping & \code{attacks condition-stripping} & PLC program / download &
+  \code{cyber.condition\_stripping} (cyber) & Program Diff, Alerts & Persistence \textbullet\ Modify Program \textbullet\ \code{T0889} & \crit \\
+Coil hijack & \code{attacks coil-hijack} & PLC program / download &
+  \code{cyber.coil\_hijack} (cyber) & Program Diff, Alerts & Persistence \textbullet\ Modify Program \textbullet\ \code{T0889} & \crit \\
+Rung injection & \code{attacks rung-injection} & PLC program / download &
+  \code{cyber.rung\_injection} (cyber) & Program Diff, Alerts & Lateral Movement \textbullet\ Program Download \textbullet\ \code{T0843} & \crit \\
+(any program download) & --- (side effect of 3b--3e) & PLC program file &
+  \code{cyber.program\_file\_modified} (FIM) & Alerts & Persistence \textbullet\ Modify Program \textbullet\ \code{T0889} & \low \\
+Force coil & \code{attacks force-coil} & PLC Modbus coil / FC05 write &
+  \code{cyber.register\_change} (cyber) & Alerts, Live Plant & Impair Process Control \textbullet\ Unauthorized Command Message \textbullet\ \code{T0855} & \low \\
+DDoS flood & \code{attacks ddos --count 800} & PLC Modbus server / flood &
+  \code{resource.cpu\_spike} (resource) & Alerts & Inhibit Response Function \textbullet\ Denial of Service \textbullet\ \code{T0814} & \med \\
+Cable pull & (physical / \code{link\_watch}) & PLC NIC carrier &
+  \code{physical.link\_down} (physical) & Alerts & Inhibit Response Function \textbullet\ Denial of Service \textbullet\ \code{T0814} & \med \\
+Enclosure open & (physical / \code{gpio\_tamper}) & PLC cabinet switch &
+  \code{physical.enclosure\_open} (physical) & Alerts & Initial Access \textbullet\ (no direct technique) \textbullet\ \code{N/A} & \high \\
+\bottomrule
+\end{tabularx}
+
+\vspace{6pt}
+\footnotesize\color{muted}
+Severity is computed per event type (base weight $\times$ a safety-critical multiplier), not
+hand-set. A full \code{demo\_sequence} run = 14 events (4 critical, 2 high, 3 medium, 5 low).
+\end{landscape}
+
+\end{document}

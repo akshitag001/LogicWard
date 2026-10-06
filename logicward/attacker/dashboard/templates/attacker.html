@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vigilo — Red Team Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='attacker.css') }}">
+</head>
+<body>
+  <!-- Scanline overlay -->
+  <div class="scanlines"></div>
+
+  <!-- Header -->
+  <header class="top-bar">
+    <div class="top-bar__left">
+      <span class="logo-icon">⚔️</span>
+      <h1>Vigilo <span class="accent">RED TEAM</span></h1>
+    </div>
+    <div class="top-bar__right">
+      <div class="target-info">
+        <span class="label">TARGET</span>
+        <span class="value" id="targetHost">{{ target_host }}</span>
+      </div>
+      <div class="target-info">
+        <span class="label">MODBUS</span>
+        <span class="value">:{{ modbus_port }}</span>
+      </div>
+      <div class="target-info">
+        <span class="label">PROGRAM</span>
+        <span class="value">:{{ program_port }}</span>
+      </div>
+      <button class="rt-theme" id="rtTheme" onclick="toggleRtTheme()" title="Toggle light / dark">☀</button>
+      <div class="status-dot" id="statusDot" title="Checking..."></div>
+    </div>
+  </header>
+
+  {% macro attack_card(atk, scope) %}
+        <div class="attack-card" data-id="{{ atk.id }}" data-severity="{{ atk.severity }}">
+          <div class="card-header">
+            <span class="card-icon">{{ atk.icon }}</span>
+            <div class="card-meta">
+              <span class="card-category {{ atk.category | lower | replace(' ', '-') }}">{{ atk.category }}</span>
+              <span class="card-severity sev-{{ atk.severity }}">{{ atk.severity | upper }}</span>
+            </div>
+          </div>
+          <h3 class="card-title">{{ atk.name }}</h3>
+          <p class="card-mitre">{{ atk.mitre }}</p>
+          <p class="card-desc">{{ atk.description }}</p>
+          {% if atk.id == 'ddos' %}
+          <div class="card-slider" style="margin-top:15px; margin-bottom:15px;">
+             <input type="range" id="ddos-slider" min="1000" max="250000" step="1000" value="50000" style="width: 100%; accent-color: var(--color-critical);" oninput="document.getElementById('ddos-val').innerText = parseInt(this.value).toLocaleString()">
+             <div style="font-family:monospace; color:var(--text-dim); margin-top:8px; font-size: 0.9em;">Packets to send: <strong id="ddos-val" style="color:var(--text-bright)">50,000</strong></div>
+          </div>
+          {% endif %}
+          <div class="card-footer">
+            <button class="btn-attack" onclick="fireAttack('{{ atk.id }}', this)">
+              <span class="btn-label">EXECUTE</span>
+              <span class="btn-spinner"></span>
+            </button>
+            <button class="btn-guided" onclick="guidedAttack('{{ atk.id }}', '{{ atk.name }}', '{{ scope }}')">⌨ GUIDED</button>
+            <span class="card-result"></span>
+          </div>
+        </div>
+  {% endmacro %}
+
+  <main class="container">
+    <!-- Thermal Power Plant (Raspberry Pi) -->
+    <section class="section">
+      <h2 class="section-title"><span class="section-icon">⚡</span> Thermal Power Plant
+        <span class="target-sub">Raspberry Pi · {{ target_host }}:{{ modbus_port }}</span></h2>
+      <div class="card-grid">
+        {% for atk in attacks %}{{ attack_card(atk, 'thermal') }}{% endfor %}
+      </div>
+    </section>
+
+    <!-- GRFICS Chemical Reactor (3D model) -->
+    <section class="section">
+      <h2 class="section-title"><span class="section-icon">⚗️</span> GRFICS Chemical Reactor
+        <span class="target-sub">3D model · {{ chem_host }}:{{ chem_port }}</span></h2>
+      <div class="card-grid">
+        {% for atk in chem_attacks %}{{ attack_card(atk, 'chem') }}{% endfor %}
+      </div>
+    </section>
+
+    <!-- Utilities -->
+    <section class="section">
+      <h2 class="section-title"><span class="section-icon">🛠️</span> Pi Utilities</h2>
+      <div class="util-grid">
+        {% for u in utilities %}
+        <div class="util-card" data-id="{{ u.id }}">
+          <span class="util-icon">{{ u.icon }}</span>
+          <div class="util-info">
+            <h4>{{ u.name }}</h4>
+            <p>{{ u.description }}</p>
+          </div>
+          <button class="btn-util" onclick="fireUtility('{{ u.id }}', this)">
+            <span class="btn-label">RUN</span>
+            <span class="btn-spinner"></span>
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Scoped terminal -->
+    <section class="section">
+      <h2 class="section-title"><span class="section-icon">⌨️</span> Terminal
+        <span class="target-sub">scoped to the Vigilo attack CLI · type <code>help</code></span></h2>
+      <div class="term-box">
+        <div class="term-out" id="termOut">
+          <div class="gt-line gt-dim">Scoped terminal ready. Only <code>python -m logicward.attacker.attacks …</code> and <code>…sites.grfics.attacks …</code> run here.</div>
+        </div>
+        <div class="term-input">
+          <span class="term-prompt">attacker@redteam:~$</span>
+          <input id="termInput" autocomplete="off" spellcheck="false"
+                 placeholder="python -m logicward.attacker.attacks --host {{ target_host }} --modbus-port {{ modbus_port }} setpoint-drift">
+          <button class="btn-attack" id="termRun" onclick="termRun()"><span class="btn-label">RUN</span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live Log -->
+    <section class="section">
+      <h2 class="section-title"><span class="section-icon">📟</span> Operation Log</h2>
+      <div class="log-container" id="logContainer">
+        <div class="log-line system">Vigilo Red Team Console initialized. Target: {{ target_host }}</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Guided attack terminal (opens on ⌨ GUIDED) -->
+  <div class="gt-overlay" id="gtOverlay" onclick="if(event.target===this)closeGuided()">
+    <div class="gt-modal">
+      <div class="gt-head">
+        <span class="gt-dot"></span>
+        <span class="gt-title" id="gtTitle">Guided attack</span>
+        <button class="gt-close" onclick="closeGuided()">✕</button>
+      </div>
+      <div class="gt-term" id="gtTerm"></div>
+      <div class="gt-foot">
+        <button class="btn-attack" id="gtRun" onclick="guidedRun()"><span class="btn-label">RUN COMMAND</span></button>
+        <button class="gt-copy" id="gtCopy" onclick="guidedCopy()">Copy command</button>
+        <span class="gt-hint">Runs the exact Modbus / program operations against the live target.</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.RT = {
+      thermalHost: "{{ target_host }}", modbusPort: "{{ modbus_port }}", programPort: "{{ program_port }}",
+      chemHost: "{{ chem_host }}", chemPort: "{{ chem_port }}"
+    };
+  </script>
+  <script src="{{ url_for('static', filename='attacker.js') }}"></script>
+</body>
+</html>

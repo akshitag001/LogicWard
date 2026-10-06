@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vigilo · Site B — {{ site_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='grfics.css') }}" />
+</head>
+<body>
+  <div class="top">
+    <div class="dot"></div>
+    <div>
+      <h1>Vigilo · Site B — {{ site_name }}</h1>
+      <div class="sub">OT drift detection over a live 3D chemical process · GRFICSv3</div>
+    </div>
+    <span class="badge">Modbus TCP 127.0.0.1:{{ modbus_port }} · unauthenticated</span>
+    <span class="badge" id="integrity">baseline: LOCKED</span>
+    <div class="spacer"></div>
+    <button class="btn ok" id="reset">Restore baseline</button>
+  </div>
+
+  <div class="wrap">
+    <div class="stage">
+      <span class="tag">Live 3D process — Fortiphyd GRFICS reactor</span>
+      <iframe src="/viz/" title="GRFICS 3D"></iframe>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <h2>Live process</h2>
+        <div class="gauges">
+          <div class="gauge"><div class="k">Reactor pressure</div>
+            <div class="v" id="g-press">— <small>kPa</small></div>
+            <div class="meter"><div id="m-press"></div></div></div>
+          <div class="gauge"><div class="k">Liquid level</div>
+            <div class="v" id="g-level">— <small>%</small></div>
+            <div class="meter"><div id="m-level"></div></div></div>
+          <div class="gauge"><div class="k">Feed 1 valve</div>
+            <div class="v" id="g-f1">— <small>%</small></div>
+            <div class="meter"><div id="m-f1"></div></div></div>
+          <div class="gauge"><div class="k">Purge valve</div>
+            <div class="v" id="g-purge">— <small>%</small></div>
+            <div class="meter"><div id="m-purge"></div></div></div>
+        </div>
+        <div style="margin-top:10px"><span class="pill run" id="esd">Reactor: RUNNING</span></div>
+      </div>
+
+      <div class="card">
+        <h2>Attacks <span class="count">unauthenticated Modbus writes</span></h2>
+        <div class="atk">
+          <button class="btn danger" data-atk="quality-sabotage">1 · 🧪 Quality Sabotage
+            <div class="hint">Skew feed ratio → composition/colour shifts (stealthy)</div></button>
+          <button class="btn danger" data-atk="pump-starve">2 · 🕳️ Feed Pump Trip
+            <div class="hint">Pump 1 off → reactor starved, level drains away</div></button>
+          <button class="btn danger" data-atk="overfill">3 · 🌊 Tank Overfill
+            <div class="hint">Product shut, feeds high → liquid level overflows + trip</div></button>
+          <button class="btn danger" data-atk="estop-injection">4 · 🛑 E-stop Injection
+            <div class="hint">Force emergency shutdown → plant halts, valves safe-state</div></button>
+          <button class="btn danger" data-atk="pressure-redline">5 · 🔥 Pressure Redline — BLAST
+            <div class="hint">Defeat all trips + feeds open + purge shut → reactor blasts</div></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Detection feed <span class="count" id="evcount">0 events</span></h2>
+        <div class="feed" id="feed"><div class="empty">No drift detected — plant matches baseline.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='grfics.js') }}"></script>
+  <script>
+    // -- Vigilo Auto-Reset Monitor (Parent Page) --
+    // We poll the backend generation counter from the parent frame.
+    // If it changes, we forcefully reload the 3D iframe from the outside
+    // to bypass the Unity WebGL "Game Over" crash!
+    let currentGen = null;
+    setInterval(async () => {
+      try {
+        const res = await fetch("/api/site-b/state");
+        const data = await res.json();
+        if (currentGen === null) {
+          currentGen = data.generation;
+        } else if (data.generation !== currentGen) {
+          console.log("Backend generation changed. Force reloading iframe...");
+          currentGen = data.generation;
+          const iframe = document.querySelector('iframe[title="GRFICS 3D"]');
+          if (iframe) {
+            iframe.src = iframe.src;
+          }
+        }
+      } catch (err) {}
+    }, 1500);
+  </script>
+</body>
+</html>

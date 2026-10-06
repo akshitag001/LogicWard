@@ -1,0 +1,20 @@
+# LogicWard runtime dependencies
+#
+# Install:  pip install -r requirements.txt
+#
+# The REQUIRED set below runs the full appliance on one machine (embedded plant):
+# event bus, L5X engine, drift detection, FIM, SOC dashboard, PDF export, attacker,
+# and the demo. The optional Pi extras are only needed for real hardware sensors —
+# they are imported defensively, so the pipeline runs (in simulation) without them.
+
+# ── Required (engine + dashboard + agent + attacker) ──────────────────────────
+flask>=3.0          # dashboard + ingest/poll server (ships werkzeug, used in tests)
+requests>=2.31      # agent forwarder, remote plant, attacker program downloads
+lxml>=5.0           # L5X parse + canonicalize (engine/l5x.py)
+watchdog>=4.0       # passive file-integrity monitoring (agent/sensors/fim_watch.py)
+reportlab>=4.0      # signed PDF forensic report (dashboard/evidence.py)
+
+# ── Optional — real Pi hardware sensors (have simulation fallbacks) ───────────
+psutil>=5.9         # resource plane CPU/RAM (agent/sensors/resource.py); sim via set_sim()
+# scapy>=2.5        # arp_watch live ARP sweep (Pi); dev/tests use ArpWatch.observe()
+# gpiozero>=2.0     # gpio_tamper enclosure switch (Pi only); sim via trigger_sim()

@@ -1,0 +1,460 @@
+<!doctype html>
+<!-- Modified by Komal & Antigravity (Adani Project) -->
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vigilo — SOC Console</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-role="{{ role }}" data-username="{{ username }}" data-caps="{{ caps }}">
+<div class="app">
+  <div class="app-bg"></div>
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="brand-logo" src="{{ url_for('static', filename='img/vigilo-mark.png') }}" alt="Vigilo">
+      <div><div class="brand-name">VIGILO</div><div class="brand-sub">PLC drift detection</div></div>
+    </div>
+    <nav class="nav">
+      <a class="nav-item active" data-tab="overview">Overview</a>
+      <a class="nav-item" data-tab="plant">Live Plant</a>
+      <a class="nav-item" data-tab="diff">Program Diff</a>
+      <a class="nav-item" data-tab="insider">Insider</a>
+      <a class="nav-item" data-tab="alerts">Alerts <span id="alert-badge" class="badge">0</span></a>
+      <a class="nav-item" data-tab="roles">Roles &amp; Access</a>
+      <a class="nav-item" data-tab="evidence">Evidence</a>
+    </nav>
+    <div class="side-baseline">
+      <div class="side-kicker">Approved baseline</div>
+      <div class="mono tiny" id="side-hash">—</div>
+      <div id="side-integrity" class="pill">—</div>
+    </div>
+    <div class="side-user">
+      <div class="user-name">{{ user }}</div>
+      <div class="user-role">{{ role }}</div>
+      <a href="{{ url_for('logout') }}" class="logout">Sign out</a>
+    </div>
+  </aside>
+
+  <main class="content">
+    <header class="topbar">
+      <div class="topbar-head">
+        <div class="view-title" id="view-title">Overview</div>
+        <div class="view-sub" id="view-sub">Live plant status</div>
+      </div>
+      <div class="site-tabs" id="siteTabs" title="Monitored sites"></div>
+      <div class="topbar-right">
+        <div class="threat-banner hidden" id="threat-banner">
+          <span class="tb-icon">!</span>
+          <div class="tb-text">
+            <div class="tb-kicker">Active drift detected <span class="tb-count" id="tb-count">0</span></div>
+            <div class="tb-latest" id="tb-latest">—</div>
+          </div>
+        </div>
+        <div class="topbar-div"></div>
+        <div class="health-ind" id="health-ind"><span class="hi-dot"></span><span class="hi-text" id="hi-text">All nominal</span></div>
+        <button class="btn" id="btn-pause">Pause</button>
+        <button class="theme-toggle" id="theme-toggle" title="Toggle light / dark" aria-label="Toggle theme">☾</button>
+      </div>
+    </header>
+
+    <div class="role-bar">
+      <span class="role-bar-label" id="ra-label">Your actions</span>
+      <button class="btn sm" data-cap="ack_all" id="ra-ack">Acknowledge all</button>
+      <button class="btn sm" data-cap="baseline" id="ra-lock">Re-lock baseline</button>
+      <button class="btn sm" data-cap="baseline" id="ra-restore">Restore baseline</button>
+      <button class="btn sm" data-cap="network_response" id="ra-quar">Quarantine rogue</button>
+      <button class="btn sm" data-cap="safe_state" id="ra-safe">Recommend safe-state</button>
+      <a class="btn sm" data-cap="evidence" id="ra-pdf" href="/api/evidence/report.pdf">Export forensic PDF</a>
+      <button class="btn sm primary" data-cap="compliance" id="ra-comp">Compliance posture</button>
+      <span class="ro-note" id="ro-note">Read-only session · all actions are monitored</span>
+    </div>
+
+    <!-- Overview -->
+    <section id="tab-overview" class="panel">
+      <div class="kpi-row" id="kpi-row"></div>
+      <div class="ov-main">
+        <div class="ov-sites">
+          <div class="card ov-site" id="ov-site-thermal"></div>
+          <div class="card ov-site" id="ov-site-chem"></div>
+        </div>
+        <div class="card ov-planes-card">
+          <div class="card-h">Detection planes <span class="ov-live-dot"></span></div>
+          <div id="ov-planes"></div>
+          <div class="ov-baselock">
+            <div class="ov-kicker">Baseline lock</div>
+            <div class="ov-lock-row"><span class="ov-lock-dot" id="ov-lock-dot"></span><span id="ov-lock-text">—</span></div>
+            <div class="ov-lock-hash mono" id="ov-lock-hash">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="card ov-feed-card">
+        <div class="card-h">Severity-ranked alert feed <span class="muted tiny" id="ov-feed-sum">—</span>
+          <a class="ov-viewall" id="ov-viewall">View all →</a>
+        </div>
+        <div id="ov-alerts" class="feed"></div>
+      </div>
+    </section>
+
+    <!-- Live Plant -->
+    <section id="tab-plant" class="panel hidden">
+     <div id="plant-thermal">
+      <div class="card mimic-card">
+        <div class="card-h">Live plant mimic
+          <span class="mimic-legend">
+            <i class="lg on"></i>running <i class="lg off"></i>stopped
+            <i class="lg trip"></i>tripped <i class="lg atk"></i>under attack
+            <span class="muted tiny" style="margin-left:auto">click a flashing element to acknowledge</span>
+          </span>
+        </div>
+        <div class="mimic" id="mimic">
+          <svg class="mimic-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <!-- feedwater / condensate (blue) -->
+            <line class="pipe water flow" x1="16" y1="80" x2="16" y2="37"/>
+            <line class="pipe water flow" x1="51" y1="84" x2="28" y2="84"/>
+            <line class="pipe water" x1="56" y1="79" x2="56" y2="84"/>
+            <!-- fuel (amber) -->
+            <line class="pipe fuel flow" x1="15" y1="60" x2="18.5" y2="60"/>
+            <!-- heat furnace -> drum (orange) -->
+            <line class="pipe heat flow" x1="23" y1="55" x2="23" y2="37"/>
+            <!-- steam (orange) -->
+            <line class="pipe steam flow" x1="28" y1="32" x2="35" y2="32"/>
+            <line class="pipe steam flow" x1="45" y1="32" x2="51" y2="32"/>
+            <line class="pipe steam" x1="56" y1="37" x2="56" y2="79"/>
+            <!-- shaft + electrical -->
+            <line class="pipe shaft" x1="61" y1="32" x2="64" y2="32"/>
+            <line class="pipe elec flow" x1="74" y1="32" x2="76.5" y2="32"/>
+            <line class="pipe elec flow" x1="83.5" y1="32" x2="86.5" y2="32"/>
+            <line class="pipe elec flow" x1="90" y1="27" x2="90" y2="16"/>
+            <!-- control / comms (dashed) -->
+            <line class="pipe ctrl" x1="7" y1="27" x2="7" y2="75"/>
+            <line class="pipe ctrl" x1="12" y1="22" x2="23" y2="22"/>
+          </svg>
+
+          <div class="node plc" id="n-plc" style="left:7%;top:22%">
+            <div class="node-name">SAFETY PLC</div>
+            <div class="node-sub mono">Modbus TCP :5020</div>
+            <div class="node-sub warn mono">No Auth [V-001]</div>
+          </div>
+          <div class="node net" id="n-net" style="left:7%;top:80%">
+            <div class="node-name">OT NETWORK</div>
+            <div class="node-sub mono">allowlisted MACs</div>
+          </div>
+
+          <div class="node" id="n-fuel" style="left:10%;top:60%">
+            <div class="node-name">FUEL VALVE</div>
+            <div class="node-state" id="s-fuel">—</div>
+          </div>
+          <div class="node" id="n-furnace" style="left:23%;top:60%">
+            <div class="node-name">FURNACE</div>
+            <div class="node-state" id="s-flame">—</div>
+            <div class="relay" id="r-fuel"><span class="relay-dot"></span>FUEL TRIP</div>
+          </div>
+          <div class="node" id="n-drum" style="left:23%;top:32%">
+            <div class="node-name">BOILER DRUM</div>
+            <div class="node-val"><b id="v-drum">—</b><span>mm</span></div>
+            <div class="relay" id="r-feedwater"><span class="relay-dot"></span>FW TRIP</div>
+          </div>
+          <div class="node" id="n-fwp" style="left:23%;top:84%">
+            <div class="node-name">FEEDWATER PUMPS</div>
+            <div class="node-state" id="s-fwp">—</div>
+          </div>
+          <div class="node" id="n-msv" style="left:40%;top:32%">
+            <div class="node-name">MAIN STEAM</div>
+            <div class="node-val"><b id="v-steamp">—</b><span>bar</span></div>
+            <div class="node-sub"><span id="v-steamt">—</span> °C · <span id="s-msv">—</span></div>
+            <div class="relay" id="r-steam"><span class="relay-dot"></span>MS TRIP</div>
+          </div>
+          <div class="node" id="n-turbine" style="left:56%;top:32%">
+            <div class="node-name">HP TURBINE</div>
+            <div class="node-val"><b id="v-turb">—</b><span>rpm</span></div>
+            <div class="node-sub">vib <span id="v-vib">—</span> mm/s</div>
+            <div class="relay" id="r-turbine"><span class="relay-dot"></span>TURB TRIP</div>
+          </div>
+          <div class="node" id="n-cond" style="left:56%;top:84%">
+            <div class="node-name">CONDENSER</div>
+            <div class="node-val"><b id="v-cond">—</b><span>mbar</span></div>
+            <div class="relay" id="r-cond"><span class="relay-dot"></span>COND TRIP</div>
+          </div>
+          <div class="node" id="n-gen" style="left:69%;top:32%">
+            <div class="node-name">GENERATOR</div>
+            <div class="node-val"><b id="v-gen">—</b><span>MW</span></div>
+            <div class="node-sub"><span id="v-freq">—</span> Hz</div>
+          </div>
+          <div class="node brk" id="n-gcb" style="left:80%;top:32%">
+            <div class="node-name">GEN CB</div>
+            <div class="node-state" id="s-gcb">—</div>
+          </div>
+          <div class="node" id="n-xfmr" style="left:90%;top:32%">
+            <div class="node-name">GSU&nbsp;T1</div>
+          </div>
+          <div class="node grid" id="n-grid" style="left:90%;top:11%">
+            <div class="node-name">⚡ 115 kV GRID</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="host-telemetry">
+        <div class="card-h">Controller host — live load
+          <span class="tlm-hint muted tiny">CPU / RAM / SoC temp · a Modbus flood (DDoS) spikes this</span>
+          <span class="tlm-host mono" id="tlm-host" style="margin-left:auto">—</span>
+        </div>
+        <div class="tlm-grid">
+          <div class="tlm-stat" id="tlm-cpu-box">
+            <div class="tlm-label">CPU</div>
+            <div class="tlm-val"><b id="tlm-cpu">—</b><span>%</span></div>
+            <div class="tlm-bar"><i id="tlm-cpu-bar"></i></div>
+          </div>
+          <div class="tlm-stat" id="tlm-mem-box">
+            <div class="tlm-label">RAM</div>
+            <div class="tlm-val"><b id="tlm-mem">—</b><span>%</span></div>
+            <div class="tlm-bar"><i id="tlm-mem-bar"></i></div>
+          </div>
+          <div class="tlm-stat" id="tlm-temp-box">
+            <div class="tlm-label">SoC TEMP</div>
+            <div class="tlm-val"><b id="tlm-temp">—</b><span>°C</span></div>
+            <div class="tlm-bar"><i id="tlm-temp-bar"></i></div>
+          </div>
+          <div class="tlm-spark">
+            <div class="tlm-label">CPU trend — last ~60 s <span class="tlm-src" id="tlm-src">—</span></div>
+            <svg id="tlm-cpu-spark" class="tlm-spark-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+              <polyline id="tlm-cpu-line" fill="none" points=""></polyline>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="card"><div class="card-h">Trip &amp; alarm status</div><div id="plant-trips" class="trip-grid"></div></div>
+        <div class="card"><div class="card-h">Setpoints (holding registers)</div><div id="plant-setpoints" class="value-grid"></div></div>
+      </div>
+      <div class="card"><div class="card-h">Live process trends <span class="muted tiny" style="margin-left:auto">rolling window · updates ~1.5 s</span></div>
+        <div id="plant-trends" class="trend-grid"></div></div>
+      <div class="card"><div class="card-h">All process values</div><div id="plant-values" class="value-grid"></div></div>
+     </div><!-- /plant-thermal -->
+
+     <div id="plant-chem" class="hidden">
+      <div class="chem-wrap">
+        <div class="card chem-stage">
+          <div class="card-h">Live 3D process — GRFICS chemical reactor
+            <span class="muted tiny" style="margin-left:auto">Modbus TCP :5021 · unauthenticated</span>
+          </div>
+          <iframe id="chem-frame" class="chem-frame" title="GRFICS chemical reactor 3D"></iframe>
+        </div>
+        <div class="chem-side">
+          <div class="card">
+            <div class="card-h">Live process</div>
+            <div class="chem-gauges">
+              <div class="cg"><div class="cg-k">Reactor pressure</div><div class="cg-v" id="cg-press">—</div><div class="cg-m"><div id="cgm-press"></div></div></div>
+              <div class="cg"><div class="cg-k">Liquid level</div><div class="cg-v" id="cg-level">—</div><div class="cg-m"><div id="cgm-level"></div></div></div>
+              <div class="cg"><div class="cg-k">Feed-1 valve</div><div class="cg-v" id="cg-f1">—</div><div class="cg-m"><div id="cgm-f1"></div></div></div>
+              <div class="cg"><div class="cg-k">Feed-2 valve</div><div class="cg-v" id="cg-f2">—</div><div class="cg-m"><div id="cgm-f2"></div></div></div>
+              <div class="cg"><div class="cg-k">Purge valve</div><div class="cg-v" id="cg-purge">—</div><div class="cg-m"><div id="cgm-purge"></div></div></div>
+              <div class="cg"><div class="cg-k">Product valve</div><div class="cg-v" id="cg-product">—</div><div class="cg-m"><div id="cgm-product"></div></div></div>
+            </div>
+            <div style="margin-top:10px"><span class="pill" id="cg-esd">Reactor: —</span></div>
+          </div>
+        </div>
+      </div>
+     </div><!-- /plant-chem -->
+    </section>
+
+    <!-- Program Diff -->
+    <section id="tab-diff" class="panel hidden">
+      <div class="card" id="diff-thermal">
+        <div class="card-h">
+          Baseline vs running program
+          <span id="diff-summary" class="diff-summary"></span>
+          <span class="hdr-actions">
+            <button class="btn" data-cap="baseline" id="btn-restore">Restore baseline</button>
+            <button class="btn primary" data-cap="baseline" id="btn-lock">Re-lock baseline</button>
+          </span>
+        </div>
+        <div class="diff-hashes mono tiny">
+          <span>baseline <b id="diff-bhash">—</b></span>
+          <span>live <b id="diff-lhash">—</b></span>
+        </div>
+        <div id="diff-body" class="diff"></div>
+      </div>
+      <div class="card hidden" id="diff-chem-note">
+        <div class="card-h">Register-plane diff — GRFICS chemical reactor
+          <span id="chem-diff-summary" class="diff-summary"></span>
+        </div>
+        <p class="muted tiny" style="padding:10px 18px 0;line-height:1.5;margin:0">
+          The OpenPLC controller runs <b>Structured Text</b>, not Rockwell L5X, so instead of a rung
+          diff this site is verified on the <b>register plane</b> — every writable holding register &amp;
+          control coil is diffed live against the signed baseline snapshot (a Structured-Text program
+          parser is on the roadmap). Any setpoint or command tampering shows up as drift below.
+        </p>
+        <div class="dtbl chdtbl">
+          <div class="dtbl-head"><div>Tag</div><div>Modbus</div><div>Baseline</div><div>Live</div><div>State</div></div>
+          <div id="chem-diff-body"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Insider (C&I / Control Engineer) -->
+    <section id="tab-insider" class="panel hidden">
+      <div class="card">
+        <div class="card-h">Insider actions — engineering workstation
+          <span class="muted tiny" style="margin-left:auto">program-download channel → classified INTERNAL</span>
+        </div>
+        <p class="muted tiny" style="padding:10px 18px 0;line-height:1.5;margin:0">
+          You are the <b>C&amp;I / Control Engineer</b>. From the engineering workstation you can push
+          program-logic changes to the PLC. An <b>unapproved</b> push is real insider drift — Vigilo detects
+          it on the program plane and attributes it to you.
+        </p>
+        <div id="insider-attacks" class="insider-grid"></div>
+      </div>
+      <div class="card">
+        <div class="card-h">Engineering terminal <span class="muted tiny" style="margin-left:auto">scoped to the Vigilo attack CLI · type "help"</span></div>
+        <div class="term-box">
+          <div class="term-out" id="ins-out"><div class="gt-line gt-dim">Scoped terminal ready — only the Vigilo attack CLI runs here.</div></div>
+          <div class="term-input">
+            <span class="term-prompt">engineer@ews:~$</span>
+            <input id="ins-input" autocomplete="off" spellcheck="false" placeholder="python -m logicward.attacker.attacks --host <pi> logic-inversion">
+            <button class="btn primary" id="ins-run">Run</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Alerts -->
+    <section id="tab-alerts" class="panel hidden">
+      <div class="card">
+        <div class="card-h">Alert feed <span class="muted tiny" id="alerts-summary">no alerts</span>
+          <span class="cat-filter" id="cat-filter" title="Filter by attack origin">
+            <button type="button" data-cat="all" class="active">All</button>
+            <button type="button" data-cat="external">External</button>
+            <button type="button" data-cat="internal">Internal</button>
+            <button type="button" data-cat="mistake">Mistake</button>
+          </span>
+          <span class="hdr-actions">
+            <button class="btn" data-cap="ack_all" id="btn-ack-all">Acknowledge all</button>
+            <button class="btn" data-cap="baseline" id="btn-restore-alerts">Restore baseline</button>
+          </span>
+        </div>
+        <div class="dtbl atbl">
+          <div class="dtbl-head"><div>Severity</div><div>Time</div><div>Plane</div><div>Detection</div><div>MITRE ICS</div><div>Response</div></div>
+          <div id="alerts-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Evidence -->
+    <section id="tab-evidence" class="panel hidden">
+      <div class="card">
+        <div class="card-h">Evidence log <span class="muted tiny">append-only JSONL · who · when · what</span>
+          <span class="hdr-actions">
+            <a class="btn primary" data-cap="evidence" id="btn-pdf-2" href="/api/evidence/report.pdf">Export PDF report</a>
+          </span>
+        </div>
+        <div class="dtbl evtbl">
+          <div class="dtbl-head"><div>Seq</div><div>Time</div><div>Who</div><div>What</div><div>Event ID</div></div>
+          <div id="evidence-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Roles & Access -->
+    <section id="tab-roles" class="panel hidden">
+      <div class="card">
+        <div class="card-h">Roles &amp; Access Definitions</div>
+        <div style="padding: 16px;">
+          <div class="muted tiny" style="margin-bottom:14px">
+            OT/ICS functional roles and their monitored scopes within Vigilo.
+          </div>
+          <div class="role-grid">
+            <div class="role-card">
+              <div class="role-avatar">🧑‍🏭</div>
+              <div class="role-name">Operator (DCS/Control Room)</div>
+              <div class="role-sub">Live Plant Access <span class="role-login">operator / operator123</span></div>
+              <ul class="role-points">
+                <li>Live HMI/plant view and real-time alarm feed access only.</li>
+                <li>Normal behavior involves acknowledging alarms during shift hours.</li>
+                <li>Monitored for setpoint changes outside pre-approved operating limits.</li>
+              </ul>
+              <div class="role-tags">
+                <span class="tag">Live HMI</span>
+                <span class="tag">Alarm Ack</span>
+              </div>
+            </div>
+
+            <div class="role-card">
+              <div class="role-avatar">🧑‍🔧</div>
+              <div class="role-name">C&amp;I / Control Engineer</div>
+              <div class="role-sub">PLC Program Access <span class="role-login">engineer / engineer123</span></div>
+              <ul class="role-points">
+                <li>Baseline capture, program (L5X) diff view, re-baseline and restore actions.</li>
+                <li>Normal behavior involves scheduled maintenance-window logic pushes.</li>
+                <li>Monitored for unscheduled ladder logic or setpoint edits.</li>
+              </ul>
+              <div class="role-tags">
+                <span class="tag">PLC Logic</span>
+                <span class="tag">Baseline</span>
+              </div>
+            </div>
+            <div class="role-card">
+              <div class="role-avatar">🧑‍💻</div>
+              <div class="role-name">OT Network / Security Engineer</div>
+              <div class="role-sub">Infrastructure Access <span class="role-login">netsec / netsec123</span></div>
+              <ul class="role-points">
+                <li>Firewall, DMZ, and network segmentation configuration access.</li>
+                <li>Normal behavior includes patch scheduling and asset inventory updates.</li>
+                <li>Monitored for unapproved port changes or lateral-movement patterns.</li>
+              </ul>
+              <div class="role-tags">
+                <span class="tag">Network Configs</span>
+                <span class="tag">Firewall</span>
+              </div>
+            </div>
+            <div class="role-card">
+              <div class="role-avatar">🕵️</div>
+              <div class="role-name">SOC Analyst</div>
+              <div class="role-sub">Oversight Role <span class="role-login">soc / soc123</span></div>
+              <ul class="role-points">
+                <li>Full alert feed access, MITRE ATT&amp;CK mapping, forensic PDF export.</li>
+                <li>Normal behavior includes alert triage and incident investigation.</li>
+                <li>Monitored for tampering with alert states or self-closing incidents.</li>
+              </ul>
+              <div class="role-tags">
+                <span class="tag">Security Dashboard</span>
+                <span class="tag">Evidence Export</span>
+              </div>
+            </div>
+            <div class="role-card">
+              <div class="role-avatar">👷</div>
+              <div class="role-name">Vendor / OEM Contractor</div>
+              <div class="role-sub">Scoped External Access <span class="role-login">vendor / vendor123</span></div>
+              <ul class="role-points">
+                <li>Time-bound, highly restricted access to specific PLC/RTU for maintenance.</li>
+                <li>Normal behavior is strictly contained to assigned IPs and time windows.</li>
+                <li>Monitored heavily for any deviation or escalation attempts.</li>
+              </ul>
+              <div class="role-tags">
+                <span class="tag">VPN Access</span>
+                <span class="tag">Scoped Dev</span>
+              </div>
+            </div>
+            <div class="role-card">
+              <div class="role-avatar">🧑‍💼</div>
+              <div class="role-name">CISO / Plant Cybersecurity Head</div>
+              <div class="role-sub">Incident Command &amp; Compliance <span class="role-login">ciso / ciso123</span></div>
+              <ul class="role-points">
+                <li>Full cross-role visibility, final incident sign-off, compliance reporting.</li>
+                <li>Normal behavior includes periodic audit review and CERT-In reporting.</li>
+                <li>Monitored for out-of-cycle role/permission changes.</li>
+              </ul>
+              <div class="role-tags">
+                <span class="tag">Full Access</span>
+                <span class="tag">Compliance</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

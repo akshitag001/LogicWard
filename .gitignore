@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# LogicWard runtime state (generated)
+logicward/data/
+logicward/plant/program/live.L5X
+logs/
+deploy/*.env
+
+# LaTeX build artifacts (keep the .tex and .pdf)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# OS / editor
+.DS_Store
+Thumbs.db
