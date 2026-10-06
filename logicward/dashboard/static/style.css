@@ -553,3 +553,10 @@ html[data-theme="dark"] .category-chip.internal{background:#221a3a;color:#c4b5fd
   background:#ff3b47;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;
   box-shadow:0 4px 12px -4px rgba(255,59,71,.9);z-index:3}
 .node .pin.high{background:#ff7a3d} .node .pin.medium{background:#e0a13a} .node .pin.low{background:#5b6b80}
+
+/* Baseline-integrity banner (fail-closed, Prompt 2.2) */
+.baseline-banner{margin:0 0 14px;padding:11px 16px;border-radius:9px;font-size:13px;font-weight:700;
+  letter-spacing:.2px;line-height:1.4}
+.baseline-banner.invalid{background:#3a0d12;color:#ffd7da;border:1px solid #ff3b47;
+  box-shadow:0 6px 18px -8px rgba(255,59,71,.6)}
+.baseline-banner.initial{background:#1f2a14;color:#e4f0cf;border:1px solid #8bb33a}

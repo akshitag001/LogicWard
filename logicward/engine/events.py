@@ -33,6 +33,8 @@ BASE_WEIGHTS: dict[str, int] = {
     "cyber.rung_injection":      70,   # foreign logic added to the program
     "cyber.setpoint_drift":      55,   # threshold moved (escalates on a safety rung)
     "cyber.register_change":     35,   # raw value moved — corroborated by other signals
+    "cyber.baseline_tamper":     95,   # the signed baseline itself was altered off-platform
+    "baseline.initial_capture":   0,   # trust-on-first-use capture (informational)
     "physical.enclosure_open":   60,   # physical access to the cabinet
     "physical.rogue_device":     50,   # unknown MAC on the OT segment
     "physical.link_down":        45,   # cable pull / network isolation

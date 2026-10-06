@@ -264,10 +264,25 @@
       $("#side-hash").textContent = (o.baseline_hash || "").slice(0, 30) + "…";
       const sp = $("#side-integrity");
       if (sp) { sp.textContent = o.baseline_integrity; sp.className = "pill " + (o.baseline_integrity === "VALID" ? "ok" : "bad"); }
+      renderBaselineBanner(o);
       updateThreatHealth();
       renderOverviewCards();
     }).catch(() => {});
     if (chemAvailable) fetch("/api/site-b/state").then(r => r.json()).then(s => { lastChem = s; renderOverviewCards(); }).catch(() => {});
+  }
+
+  // ---- global baseline-integrity banner (Prompt 2.2 fail-closed) ----
+  function renderBaselineBanner(o) {
+    let b = $("#baseline-banner");
+    if (!o || !o.baseline_notice) { if (b) b.remove(); return; }
+    if (!b) {
+      b = el("div", "baseline-banner");
+      b.id = "baseline-banner";
+      const host = document.querySelector("main") || document.body;
+      host.insertBefore(b, host.firstChild);
+    }
+    b.className = "baseline-banner " + (o.baseline_invalid ? "invalid" : "initial");
+    b.textContent = (o.baseline_invalid ? "⛔ " : "ℹ ") + o.baseline_notice;
   }
 
   // ---- topbar: view title, threat banner, health indicator ----

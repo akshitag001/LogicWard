@@ -126,6 +126,11 @@ class Dashboard:
 
         # lock (or load) the baseline from the current approved program + registers
         self.baseline_path = config.BASELINE_MANIFEST_PATH
+        # Baseline integrity state (Prompt 2.2 — fail closed):
+        #   VALID   — signature verified, detection running
+        #   INITIAL — trust-on-first-use capture (no prior file); review it
+        #   INVALID — saved baseline failed HMAC verify; detection PAUSED
+        self.baseline_state = "VALID"
         self.signed = self._load_or_capture_baseline()
         self.baseline_prog = l5x.parse(self.signed["manifest"]["l5x"].encode())
 
@@ -183,26 +188,86 @@ class Dashboard:
 
     # -- baseline lifecycle --
     def _load_or_capture_baseline(self) -> dict:
+        """Load the signed baseline, FAILING CLOSED on tamper (Prompt 2.2).
+
+        * File missing  -> trust-on-first-use capture, state INITIAL.
+        * File present + signature verifies -> state VALID.
+        * File present + signature FAILS -> we do NOT silently re-capture the
+          (possibly attacker-approved) live program. We quarantine the file,
+          raise a critical cyber.baseline_tamper, and come up in INVALID state
+          with detection paused until an engineer/CISO deliberately re-locks.
+        """
+        if not self.baseline_path.exists():
+            signed = self._capture_baseline(source="initial")
+            self.baseline_state = "INITIAL"
+            self.bus.emit_new("baseline.initial_capture", "dashboard", {
+                "reason": "Trust-on-first-use baseline captured (no prior signed baseline on disk) — review it",
+                "controller": signed["manifest"]["controller"],
+                "structural_hash": signed["manifest"]["structural_hash"],
+            }, identity={"who": "dashboard", "channel": "operator"})
+            return signed
+
         try:
             signed = bl.load(self.baseline_path)
-            if bl.verify(signed):
-                return signed
-        except Exception:  # noqa: BLE001
-            pass
-        return self._capture_baseline()
+        except Exception:  # noqa: BLE001 - unreadable/corrupt file is also tamper
+            signed = None
 
-    def _capture_baseline(self) -> dict:
-        signed = bl.capture(self.plant.program_source(), self.plant.register_source())
-        bl.save(signed, self.baseline_path)
+        if signed is not None and bl.verify(signed):
+            self.baseline_state = "VALID"
+            return signed
+
+        # --- fail closed: quarantine the tampered file, do NOT overwrite it ---
+        quarantined = None
+        try:
+            ts = time.strftime("%Y%m%d-%H%M%S")
+            quarantined = self.baseline_path.with_suffix(
+                self.baseline_path.suffix + f".tampered-{ts}")
+            self.baseline_path.rename(quarantined)
+        except Exception:  # noqa: BLE001
+            quarantined = None
+
+        self.baseline_state = "INVALID"
+        self.bus.emit_new("cyber.baseline_tamper", "dashboard", {
+            "reason": ("Signed baseline failed HMAC verification at startup — the file was "
+                       "modified off-platform. Detection is PAUSED and the live program was "
+                       "NOT accepted. An engineer/CISO must review and re-lock."),
+            "safety_critical": True,
+            "quarantined_to": str(quarantined) if quarantined else None,
+            "baseline_path": str(self.baseline_path),
+        }, severity="critical", identity={"who": "unknown", "channel": "host"})
+
+        # Keep the (unverified) manifest in memory only so the object can build;
+        # the drift loop is gated on baseline_state and will not run detection.
+        if signed is None:
+            signed = self._capture_baseline(source="file", save=False)
+        return signed
+
+    def _capture_baseline(self, source: str | None = None, save: bool = True) -> dict:
+        """Capture + sign a baseline. Source of the approved program:
+        LOGICWARD_BASELINE_SOURCE=file (default) uses the shipped, reviewed
+        ThermalPlant_baseline.L5X; =live captures whatever the PLC is running now."""
+        src = source or os.environ.get("LOGICWARD_BASELINE_SOURCE", "file")
+        from logicward.plant.logic_store import BASELINE_PATH as SHIPPED_BASELINE
+        if src == "file" and SHIPPED_BASELINE.exists():
+            program_xml = SHIPPED_BASELINE.read_bytes()
+        else:
+            program_xml = self.plant.program_source()
+        signed = bl.capture(program_xml, self.plant.register_source())
+        if save:
+            bl.save(signed, self.baseline_path)
         return signed
 
     def relock_baseline(self) -> dict:
-        self.signed = self._capture_baseline()
+        # Re-locking deliberately accepts the CURRENTLY running program as the new
+        # approved baseline (the engineer has reviewed it), so capture from live.
+        self.signed = self._capture_baseline(source="live")
         self.baseline_prog = l5x.parse(self.signed["manifest"]["l5x"].encode())
+        self.baseline_state = "VALID"
         self.drift = DriftEngine(self.bus, self.signed,
                                  program_source=self.plant.program_source,
                                  register_source=self.plant.register_source,
                                  who_source=self._who)
+        self.drift.reset()
         return self.signed
 
     def _who(self, tag: str | None, channel: str) -> str | None:
@@ -243,7 +308,8 @@ class Dashboard:
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                self.drift.run_once()
+                if self.baseline_state != "INVALID":   # fail closed: no detection on a tampered baseline
+                    self.drift.run_once()
             except Exception:  # noqa: BLE001
                 pass
             try:
@@ -277,11 +343,22 @@ class Dashboard:
         live = l5x.parse(self.plant.program_source())
         diff = l5x_diff.diff_programs(self.baseline_prog, live)
         integrity = "VALID" if bl.verify(self.signed) else "TAMPERED"
+        if self.baseline_state == "INVALID":
+            integrity = "TAMPERED"
         risk_score, risk_band = _risk(counts, integrity, diff["changed"] == 0)
         return {
             "controller": self.signed["manifest"]["controller"],
             "baseline_hash": self.signed["manifest"]["structural_hash"],
             "baseline_integrity": integrity,
+            "baseline_state": self.baseline_state,
+            "baseline_invalid": self.baseline_state == "INVALID",
+            "detection_paused": self.baseline_state == "INVALID",
+            "baseline_initial": self.baseline_state == "INITIAL",
+            "baseline_notice": (
+                "BASELINE INVALID — signed baseline failed verification; detection is paused. "
+                "An engineer or CISO must review and re-lock." if self.baseline_state == "INVALID"
+                else "Trust-on-first-use baseline — review it." if self.baseline_state == "INITIAL"
+                else None),
             "live_hash": diff["live_hash"],
             "program_in_sync": diff["changed"] == 0,
             "program_changed": diff["changed"],
@@ -488,6 +565,16 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
     @app.post("/api/baseline/lock")
     @require_cap("baseline")
     def api_lock():
+        # When the baseline is INVALID (startup tamper), re-locking requires an
+        # engineer/CISO and a typed confirmation — it clears a fail-closed state.
+        if dash.baseline_state == "INVALID":
+            role = _current_role()
+            if role not in ("control_engineer", "ciso"):
+                return jsonify({"error": "baseline invalid — only an engineer or CISO may re-lock"}), 403
+            confirm = (request.get_json(silent=True) or {}).get("confirm", "")
+            if str(confirm).strip().upper() != "RELOCK":
+                return jsonify({"error": "confirmation required",
+                                "message": "Re-locking a tampered baseline requires confirm='RELOCK'."}), 428
         # if the running program has drifted, accepting it as the baseline without
         # review is a change-management error -> a "mistake"-category governance event.
         drifted = 0

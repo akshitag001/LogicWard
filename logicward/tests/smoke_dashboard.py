@@ -119,10 +119,53 @@ def main() -> int:
     finally:
         dash.stop()
 
+    tamper_test()
+
     passed = sum(1 for ok, _ in _checks if ok)
     total = len(_checks)
     print(f"\n{'='*52}\n  RESULT: {passed}/{total} checks passed\n{'='*52}")
     return 0 if passed == total else 1
+
+
+def tamper_test() -> None:
+    """Prompt 2.2 — a tampered baseline must fail CLOSED at startup."""
+    import json
+
+    bpath = config.BASELINE_MANIFEST_PATH
+    for p in list(bpath.parent.glob(bpath.name + ".tampered-*")):
+        p.unlink()
+    # corrupt the signed baseline left on disk (break the signature by editing the manifest)
+    signed = json.loads(bpath.read_text(encoding="utf-8"))
+    signed["manifest"]["structural_hash"] = "sha256:deadbeefdeadbeef"
+    corrupt_bytes = json.dumps(signed, indent=2).encode("utf-8")
+    bpath.write_bytes(corrupt_bytes)
+
+    dash2 = Dashboard(embed=True)   # construct only (no loop) — fail-closed happens in __init__
+    try:
+        evs = dash2.bus.snapshot()
+        check(any(e["type"] == "cyber.baseline_tamper" and e["severity"] == "critical" for e in evs),
+              "tampered baseline at startup -> critical cyber.baseline_tamper emitted")
+        check(dash2.baseline_state == "INVALID", "dashboard comes up in INVALID (fail-closed) state")
+        ov = dash2.overview()
+        check(ov["baseline_integrity"] == "TAMPERED", "overview reports baseline_integrity=TAMPERED")
+        check(ov["detection_paused"] is True, "detection is paused while baseline is invalid")
+        # the tampered file must NOT be overwritten with a fresh capture — it is quarantined
+        quarantined = list(bpath.parent.glob(bpath.name + ".tampered-*"))
+        check(len(quarantined) == 1 and quarantined[0].read_bytes() == corrupt_bytes,
+              "tampered file quarantined intact, NOT overwritten")
+        check(not bpath.exists(), "no fresh baseline silently written in place of the tampered one")
+        # re-lock on an invalid baseline needs a typed confirmation
+        app2 = create_app(dashboard=dash2)
+        eng = login(app2, "engineer", "engineer123")
+        check(eng.post("/api/baseline/lock").status_code == 428,
+              "re-lock on invalid baseline without confirm -> 428")
+        ok = eng.post("/api/baseline/lock", json={"confirm": "RELOCK"})
+        check(ok.status_code == 200 and dash2.baseline_state == "VALID",
+              "engineer re-locks with confirm='RELOCK' -> baseline VALID again")
+    finally:
+        dash2.stop()
+        for p in list(bpath.parent.glob(bpath.name + ".tampered-*")):
+            p.unlink()
 
 
 if __name__ == "__main__":

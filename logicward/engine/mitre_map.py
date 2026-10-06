@@ -42,6 +42,7 @@ _MAP["cyber.program_file_modified"] = ("Persistence", "T0889", "Modify Program",
 # technique — left N/A rather than mapped to a fabricated ID.
 _MAP["cyber.baseline_tamper"] = ("N/A", "N/A", "Baseline integrity tamper (no direct ATT&CK for ICS technique)", False)
 _MAP["cyber.baseline_relocked"] = ("N/A", "N/A", "Approved re-lock (not an adversary technique)", False)
+_MAP["baseline.initial_capture"] = ("N/A", "N/A", "Trust-on-first-use baseline capture (not an adversary technique)", False)
 
 # our own response actions are not adversary techniques
 _UNMAPPED = ("N/A", "N/A", "Not an adversary technique", False)
