@@ -120,6 +120,7 @@ def main() -> int:
         dash.stop()
 
     tamper_test()
+    secrets_test()
 
     passed = sum(1 for ok, _ in _checks if ok)
     total = len(_checks)
@@ -166,6 +167,30 @@ def tamper_test() -> None:
         dash2.stop()
         for p in list(bpath.parent.glob(bpath.name + ".tampered-*")):
             p.unlink()
+
+
+def secrets_test() -> None:
+    """Prompt 2.3 — production mode must fail fast without real secrets."""
+    import os
+    saved = {k: os.environ.get(k) for k in
+             ("LOGICWARD_DEMO_MODE", "LOGICWARD_SECRET", "LOGICWARD_TOKEN", "LOGICWARD_HMAC_KEY")}
+    try:
+        os.environ["LOGICWARD_DEMO_MODE"] = "0"
+        for k in ("LOGICWARD_SECRET", "LOGICWARD_TOKEN", "LOGICWARD_HMAC_KEY"):
+            os.environ.pop(k, None)
+        raised = ""
+        try:
+            create_app(embed=True)
+        except RuntimeError as exc:
+            raised = str(exc)
+        check("LOGICWARD_SECRET" in raised and "DEMO_MODE=0" in raised,
+              "DEMO_MODE=0 with no secrets -> create_app() raises a clear error")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 if __name__ == "__main__":

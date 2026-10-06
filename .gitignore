@@ -9,6 +9,10 @@ __pycache__/
 venv/
 env/
 
+# Secrets / local env (never commit)
+.env
+logicward/data/keys/
+
 # LogicWard runtime state (generated)
 logicward/data/
 logicward/plant/program/live.L5X

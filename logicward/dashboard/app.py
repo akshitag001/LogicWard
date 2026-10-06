@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import functools
 import os
+import secrets
 import threading
 import time
 
@@ -418,7 +419,18 @@ def require_cap(cap: str):
 
 def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) -> Flask:
     app = Flask(__name__)
-    app.secret_key = os.environ.get("LOGICWARD_SECRET", "logicward-dev-secret")
+    # Session-cookie signing key (Prompt 2.3): never ship a static default.
+    if config.demo_mode():
+        app.secret_key = os.environ.get("LOGICWARD_SECRET") or secrets.token_hex(32)
+        print("[LogicWard] DEMO MODE active — ephemeral session key + demo credentials. "
+              "Set LOGICWARD_DEMO_MODE=0 (with LOGICWARD_SECRET/TOKEN/HMAC_KEY) for production.")
+    else:
+        missing = config.validate_secrets()
+        if missing:
+            raise RuntimeError(
+                "Refusing to start with LOGICWARD_DEMO_MODE=0: set strong, non-default "
+                "values for: " + ", ".join(missing) + ". See .env.example.")
+        app.secret_key = os.environ["LOGICWARD_SECRET"]
     if embed is None:
         embed = os.environ.get("LOGICWARD_EMBED_PLANT", "1") != "0"
     dash = dashboard or Dashboard(embed=embed).start()
