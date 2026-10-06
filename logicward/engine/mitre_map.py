@@ -22,6 +22,11 @@ from __future__ import annotations
 # type -> (tactic, technique_id, technique_name, verified)
 _MAP: dict[str, tuple[str, str, str, bool]] = {
     "cyber.setpoint_drift":      ("Impair Process Control",    "T0836", "Modify Parameter", True),
+    "cyber.tag_value_change":    ("Impair Process Control",    "T0836", "Modify Parameter", True),
+    "cyber.routine_added":       ("Persistence",               "T0889", "Modify Program", True),
+    "cyber.routine_removed":     ("Persistence",               "T0889", "Modify Program", True),
+    "cyber.routine_modified":    ("Persistence",               "T0889", "Modify Program", True),
+    "cyber.task_change":         ("Persistence",               "T0889", "Modify Program", True),
     "cyber.register_change":     ("Impair Process Control",    "T0855", "Unauthorized Command Message", True),
     "cyber.logic_inversion":     ("Persistence",               "T0889", "Modify Program", True),
     "cyber.condition_stripping": ("Persistence",               "T0889", "Modify Program", True),

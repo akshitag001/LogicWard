@@ -183,6 +183,54 @@ class DriftEngine:
             b_list = self.baseline_prog.routines.get(rname, [])
             l_list = live.routines.get(rname, [])
             out += self._align_and_diff(rname, b_list, l_list)
+
+        out += self._diff_non_rung(live)   # tags, non-ladder routines, tasks (Prompt 1.2)
+        return out
+
+    def _diff_non_rung(self, live: l5x.L5XProgram) -> list:
+        """Detect changes the rung diff doesn't cover: non-setpoint tag values,
+        non-ladder (ST/FBD/SFC) routines, and task scheduling."""
+        out: list = []
+        base = self.baseline_prog
+
+        # non-setpoint scalar tag values (timer presets, constants, flags)
+        for tag in sorted(set(base.tag_values) | set(live.tag_values)):
+            if tag.split("/")[-1].endswith("_SP"):
+                continue                               # handled by setpoint_drift
+            b, c = base.tag_values.get(tag), live.tag_values.get(tag)
+            if b != c:
+                self._emit("cyber.tag_value_change", {
+                    "tag": tag, "baseline": b, "current": c,
+                    "reason": f"Tag/constant {tag} changed {b} -> {c} in the program",
+                }, "program-download")
+
+        # non-ladder routines
+        for key in sorted(set(base.non_rll_routines) | set(live.non_rll_routines)):
+            b, c = base.non_rll_routines.get(key), live.non_rll_routines.get(key)
+            if b is None:
+                self._emit("cyber.routine_added", {
+                    "rung_id": key, "routine_type": (c or {}).get("type"), "safety_critical": True,
+                    "reason": f"Non-ladder routine added: {key} ({(c or {}).get('type')})",
+                }, "program-download")
+            elif c is None:
+                self._emit("cyber.routine_removed", {
+                    "rung_id": key, "routine_type": (b or {}).get("type"), "safety_critical": True,
+                    "reason": f"Routine removed: {key}",
+                }, "program-download")
+            elif b.get("sig") != c.get("sig"):
+                self._emit("cyber.routine_modified", {
+                    "rung_id": key, "routine_type": c.get("type"), "safety_critical": True,
+                    "reason": f"Non-ladder routine body changed: {key} ({c.get('type')})",
+                }, "program-download")
+
+        # tasks (scan scheduling) — a rate change or moving a routine out of the scan
+        for name in sorted(set(base.tasks) | set(live.tasks)):
+            b, c = base.tasks.get(name), live.tasks.get(name)
+            if b != c:
+                self._emit("cyber.task_change", {
+                    "tag": name, "baseline": b, "current": c, "safety_critical": True,
+                    "reason": f"Task '{name}' scheduling changed: {b} -> {c}",
+                }, "program-download")
         return out
 
     def _align_and_diff(self, rname: str, b_list: list, l_list: list) -> list:

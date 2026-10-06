@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import Counter
 
 from logicward.engine import baseline as bl
+from logicward.engine import l5x
 from logicward.engine.drift import DriftEngine
 from logicward.engine.events import EventBus
 from logicward.plant import rung_to_register as r2r
@@ -125,6 +126,36 @@ def main() -> int:
     first = eng.run_once()
     second = eng.run_once()
     check(len(first) == 1 and len(second) == 0, "persistent mutation reported once, not every pass")
+
+    # ── Prompt 1.2: non-ladder routines, non-_SP tags, task scheduling ───────
+    st_routine = ('     <Routine Name="Hidden_ST" Type="ST"><STContent>'
+                  '<Line Number="0"><![CDATA[Fuel_Trip := 0;]]></Line>'
+                  '</STContent></Routine>\n')
+    with_st = base_text.replace("    </Routines>", "    " + st_routine + "    </Routines>")
+    evs = run_case(signed, with_st.encode(), base_regs)
+    check(l5x.structural_hash(l5x.parse(with_st.encode())) != l5x.structural_hash(l5x.parse(base_xml)),
+          "1.2: adding an ST routine changes the hash")
+    check(any(e["type"] == "cyber.routine_added" for e in evs),
+          "1.2: added ST routine -> cyber.routine_added")
+
+    # non-_SP tag value change (timer preset / constant). Flip Plant_Running 1 -> 0.
+    tagchg = base_text.replace(
+        '<Tag Name="Plant_Running" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write">\n'
+        '    <Description><![CDATA[Unit is in run state]]></Description>\n'
+        '    <Data Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="1"/></Data>',
+        '<Tag Name="Plant_Running" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write">\n'
+        '    <Description><![CDATA[Unit is in run state]]></Description>\n'
+        '    <Data Format="Decorated"><DataValue DataType="BOOL" Radix="Decimal" Value="0"/></Data>')
+    evs = run_case(signed, tagchg.encode(), base_regs)
+    check(tagchg != base_text and any(e["type"] == "cyber.tag_value_change" for e in evs),
+          "1.2: non-_SP tag value change -> cyber.tag_value_change (T0836)")
+
+    # task rate change 50 -> 200 ms (moves the safety scan slower)
+    taskchg = base_text.replace('Rate="50"', 'Rate="200"')
+    evs = run_case(signed, taskchg.encode(), base_regs)
+    check(l5x.structural_hash(l5x.parse(taskchg.encode())) != l5x.structural_hash(l5x.parse(base_xml))
+          and any(e["type"] == "cyber.task_change" for e in evs),
+          "1.2: task rate change -> hash changes + cyber.task_change")
 
     # ── Prompt 1.4: inserting ONE rung at the top must not false-alarm ───────
     # New harmless rung at Number 0, every original rung renumbered 0..5 -> 1..6.

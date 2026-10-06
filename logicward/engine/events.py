@@ -33,6 +33,11 @@ BASE_WEIGHTS: dict[str, int] = {
     "cyber.rung_injection":      70,   # foreign logic added to the program
     "cyber.branch_restructure":  75,   # AND/OR regrouping — e.g. a trip now fires on OR not AND
     "cyber.setpoint_drift":      55,   # threshold moved (escalates on a safety rung)
+    "cyber.tag_value_change":    50,   # non-setpoint tag/constant/preset changed in the program
+    "cyber.routine_added":       75,   # a non-ladder routine (ST/FBD/SFC) was added
+    "cyber.routine_removed":     75,   # a routine was removed from the program
+    "cyber.routine_modified":    75,   # a non-ladder routine body changed
+    "cyber.task_change":         60,   # task scheduling changed (rate/scheduled programs)
     "cyber.register_change":     35,   # raw value moved — corroborated by other signals
     "cyber.baseline_tamper":     95,   # the signed baseline itself was altered off-platform
     "baseline.initial_capture":   0,   # trust-on-first-use capture (informational)

@@ -85,6 +85,10 @@ class L5XProgram:
     tags: dict[str, dict] = field(default_factory=dict)
     routines: dict[str, list[Rung]] = field(default_factory=dict)
     source_xml: bytes = b""
+    tag_values: dict[str, str] = field(default_factory=dict)      # ALL scalar tags -> value (Prompt 1.2)
+    non_rll_routines: dict[str, dict] = field(default_factory=dict)  # name -> {type, sig}
+    aois: dict[str, str] = field(default_factory=dict)            # AOI name -> body signature
+    tasks: dict[str, dict] = field(default_factory=dict)          # task name -> {type, rate, priority, scheduled}
 
 
 # ── Neutral-text parsing ──────────────────────────────────────────────────────
@@ -192,6 +196,28 @@ def _classify_output(instrs: list[Instruction]) -> tuple[str | None, str | None]
     return last.op, (last.args[0] if last.args else None)
 
 
+def _routine_body_sig(element) -> str:
+    """Stable signature of a non-RLL routine (ST/FBD/SFC) or AOI body.
+
+    For Structured Text we hash the concatenated line text; for any other body we
+    hash its C14N XML with volatile attributes and comments stripped — so a
+    cosmetic re-export is invariant but a real logic edit changes the signature.
+    """
+    st_lines = [ln.text or "" for ln in element.findall(".//STContent/Line")]
+    if st_lines:
+        payload = "\n".join(" ".join((t or "").split()) for t in st_lines).encode("utf-8")
+    else:
+        clone = etree.fromstring(etree.tostring(element))
+        for el in clone.iter():
+            for attr in list(el.attrib):
+                if attr in VOLATILE_ATTRS:
+                    del el.attrib[attr]
+        for c in clone.xpath("//comment()"):
+            c.getparent().remove(c)
+        payload = etree.tostring(clone, method="c14n")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
 def _is_safety_critical(output_coil: str | None) -> bool:
     if not output_coil:
         return False
@@ -210,48 +236,78 @@ def parse(xml: bytes | str) -> L5XProgram:
     if controller is None:
         raise ValueError("not a valid L5X: no <Controller> element")
 
-    # -- tags + setpoints --
+    # -- tags + setpoints (controller- AND program-scoped) --
     tags: dict[str, dict] = {}
     setpoints: dict[str, float] = {}
-    for tag in controller.findall("Tags/Tag"):
-        name = tag.get("Name")
-        if not name:
-            continue
-        dtype = tag.get("DataType")
-        dv = tag.find(".//DataValue")
-        value = dv.get("Value") if dv is not None else None
-        tags[name] = {"type": dtype, "value": value}
-        if name.endswith("_SP") and value is not None:
-            try:
-                setpoints[name] = float(value)
-            except ValueError:
-                pass
+    tag_values: dict[str, str] = {}
 
-    # -- routines / rungs --
-    routines: dict[str, list[Rung]] = {}
-    for program in controller.findall("Programs/Program"):
-        for routine in program.findall("Routines/Routine"):
-            if routine.get("Type") != "RLL":
+    def _read_tags(container, prefix: str) -> None:
+        for tag in container.findall("Tags/Tag"):
+            name = tag.get("Name")
+            if not name:
                 continue
-            rungs: list[Rung] = []
-            for rung_el in routine.findall("RLLContent/Rung"):
-                number = int(rung_el.get("Number", "0"))
-                text = " ".join((rung_el.findtext("Text") or "").split())
-                comment = " ".join((rung_el.findtext("Comment") or "").split())
-                instrs = parse_neutral_text(text)
-                out_op, out_coil = _classify_output(instrs)
-                tree, _outs = build_logic_tree(text)
-                rungs.append(Rung(
-                    number=number, text=text, comment=comment,
-                    instructions=instrs, output_op=out_op, output_coil=out_coil,
-                    safety_critical=_is_safety_critical(out_coil),
-                    logic_tree=tree,
-                ))
-            routines[routine.get("Name")] = sorted(rungs, key=lambda r: r.number)
+            key = prefix + name
+            dtype = tag.get("DataType")
+            dv = tag.find(".//DataValue")
+            value = dv.get("Value") if dv is not None else None
+            tags[key] = {"type": dtype, "value": value}
+            if value is not None:
+                tag_values[key] = value          # ALL scalar tag values (Prompt 1.2)
+            if name.endswith("_SP") and value is not None:
+                try:
+                    setpoints[name] = float(value)
+                except ValueError:
+                    pass
+
+    _read_tags(controller, "")
+
+    # -- routines / rungs (RLL) + non-RLL routine signatures --
+    routines: dict[str, list[Rung]] = {}
+    non_rll: dict[str, dict] = {}
+    for program in controller.findall("Programs/Program"):
+        pname = program.get("Name", "?")
+        _read_tags(program, f"{pname}/")
+        for routine in program.findall("Routines/Routine"):
+            rname = routine.get("Name", "?")
+            rtype = routine.get("Type")
+            if rtype == "RLL":
+                rungs: list[Rung] = []
+                for rung_el in routine.findall("RLLContent/Rung"):
+                    number = int(rung_el.get("Number", "0"))
+                    text = " ".join((rung_el.findtext("Text") or "").split())
+                    comment = " ".join((rung_el.findtext("Comment") or "").split())
+                    instrs = parse_neutral_text(text)
+                    out_op, out_coil = _classify_output(instrs)
+                    tree, _outs = build_logic_tree(text)
+                    rungs.append(Rung(
+                        number=number, text=text, comment=comment,
+                        instructions=instrs, output_op=out_op, output_coil=out_coil,
+                        safety_critical=_is_safety_critical(out_coil),
+                        logic_tree=tree,
+                    ))
+                routines[rname] = sorted(rungs, key=lambda r: r.number)
+            else:
+                non_rll[f"{pname}/{rname}"] = {"type": rtype, "sig": _routine_body_sig(routine)}
+
+    # -- Add-On Instruction definitions + Tasks (scan scheduling) --
+    aois: dict[str, str] = {}
+    for aoi in controller.findall("AddOnInstructionDefinitions/AddOnInstructionDefinition"):
+        aois[aoi.get("Name", "?")] = _routine_body_sig(aoi)
+
+    tasks: dict[str, dict] = {}
+    for task in controller.findall("Tasks/Task"):
+        tasks[task.get("Name", "?")] = {
+            "type": task.get("Type"),
+            "rate": task.get("Rate"),
+            "priority": task.get("Priority"),
+            "scheduled": sorted(sp.get("Name", "")
+                                for sp in task.findall("ScheduledPrograms/ScheduledProgram")),
+        }
 
     return L5XProgram(controller=controller.get("Name", "?"),
                       setpoints=setpoints, tags=tags, routines=routines,
-                      source_xml=xml)
+                      source_xml=xml, tag_values=tag_values, non_rll_routines=non_rll,
+                      aois=aois, tasks=tasks)
 
 
 def load(path: str | Path) -> L5XProgram:
@@ -269,6 +325,8 @@ def canonical(program: L5XProgram) -> dict:
     return {
         "controller": program.controller,
         "setpoints": {k: program.setpoints[k] for k in sorted(program.setpoints)},
+        # ALL scalar tag values (not just *_SP) — timer presets, constants, flags (Prompt 1.2)
+        "tag_values": {k: program.tag_values[k] for k in sorted(program.tag_values)},
         "routines": {
             rname: [
                 {
@@ -282,6 +340,10 @@ def canonical(program: L5XProgram) -> dict:
             ]
             for rname, rungs in sorted(program.routines.items())
         },
+        # non-ladder routines (ST/FBD/SFC), AOIs, and task scheduling (Prompt 1.2)
+        "non_rll_routines": {k: program.non_rll_routines[k] for k in sorted(program.non_rll_routines)},
+        "aois": {k: program.aois[k] for k in sorted(program.aois)},
+        "tasks": {k: program.tasks[k] for k in sorted(program.tasks)},
     }
 
 
