@@ -12,8 +12,7 @@ from __future__ import annotations
 
 import os
 
-from flask import (Blueprint, jsonify, render_template, request,
-                   send_from_directory)
+from flask import Blueprint, jsonify, render_template, request, send_from_directory
 
 from logicward import config
 from logicward.sites.grfics import points as pts

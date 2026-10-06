@@ -7,7 +7,7 @@ defensively; `set_sim()` supplies values where it is unavailable.
 """
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from logicward.engine.events import new_event
 

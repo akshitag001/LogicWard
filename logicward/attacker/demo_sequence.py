@@ -28,7 +28,7 @@ from logicward.agent.sensors.resource import ResourceMonitor
 from logicward.attacker.attacks import Attacker
 from logicward.dashboard.app import Dashboard, create_app
 from logicward.plant import logic_store
-from logicward.plant.logic_store import BASELINE_PATH, LIVE_PATH
+from logicward.plant.logic_store import LIVE_PATH
 
 C = {"h": "\033[96m", "a": "\033[91m", "d": "\033[92m", "m": "\033[2m", "b": "\033[1m", "x": "\033[0m"}
 

@@ -43,7 +43,7 @@ class EmbeddedPlant:
         self.server = ModbusTCPServer(host=host, port=port, datastore=self.ds)
         self.live_path = ensure_live(LIVE_PATH)
 
-    def start(self) -> "EmbeddedPlant":
+    def start(self) -> EmbeddedPlant:
         self.server.start(background=True)
         return self
 

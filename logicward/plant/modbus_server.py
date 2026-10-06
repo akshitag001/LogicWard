@@ -279,7 +279,7 @@ class ModbusTCPServer:
                 resp = self.handler.handle(header + body, addr[0] if addr else None)
                 if resp:
                     conn.sendall(resp)
-        except (socket.timeout, OSError):
+        except (TimeoutError, OSError):
             pass
         finally:
             conn.close()

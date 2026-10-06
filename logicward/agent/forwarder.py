@@ -55,7 +55,7 @@ class Forwarder:
             return len(self._buf)
 
     # -- lifecycle --
-    def start(self) -> "Forwarder":
+    def start(self) -> Forwarder:
         if self._thread and self._thread.is_alive():
             return self
         self._stop.clear()

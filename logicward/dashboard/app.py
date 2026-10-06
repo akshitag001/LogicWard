@@ -22,8 +22,14 @@ import threading
 import time
 from datetime import timedelta
 
-from flask import (Flask, Response, jsonify, redirect, render_template, request,
-                   session, url_for)
+from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
+
+# ── RBAC — 6 OT/ICS roles, capability-based ──────────────────────────────────
+# These are the six functional roles shown on the "Roles & Access" tab. Access is
+# gated by CAPABILITY (what a role may DO), not a linear rank, because the roles
+# have different scopes (a Network Engineer can quarantine a device but not touch
+# the PLC program; a Control Engineer is the reverse).
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from logicward import config
 from logicward.agent.sensors.fim_watch import BaselineFileMonitor
@@ -37,13 +43,6 @@ from logicward.engine.response import ResponseEngine
 from logicward.engine.server import api as engine_api
 from logicward.engine.sources import EmbeddedPlant, RemotePlant
 from logicward.sites import registry
-
-# ── RBAC — 6 OT/ICS roles, capability-based ──────────────────────────────────
-# These are the six functional roles shown on the "Roles & Access" tab. Access is
-# gated by CAPABILITY (what a role may DO), not a linear rank, because the roles
-# have different scopes (a Network Engineer can quarantine a device but not touch
-# the PLC program; a Control Engineer is the reverse).
-from werkzeug.security import check_password_hash, generate_password_hash
 
 # Demo credentials (unchanged usernames/passwords) — but stored as salted PBKDF2
 # hashes, never plaintext (Prompt 2.4). The hashes are derived once at import.
@@ -302,7 +301,7 @@ class Dashboard:
         if live is not None:
             live.write_text(l5x_str, encoding="utf-8")
             return True
-        
+
         prog_url = getattr(self.plant, "program_url", None)
         if prog_url:
             import requests
@@ -314,7 +313,7 @@ class Dashboard:
         return False
 
     # -- background drift loop --
-    def start(self) -> "Dashboard":
+    def start(self) -> Dashboard:
         self.baseline_fim.start()
         self._thread = threading.Thread(target=self._loop, name="lw-drift", daemon=True)
         self._thread.start()
@@ -350,6 +349,8 @@ class Dashboard:
         self.baseline_fim.stop()
         if hasattr(self.plant, "stop"):
             self.plant.stop()
+        if self.chem is not None and hasattr(self.chem, "stop"):
+            self.chem.stop()         # free the Site-B Modbus port (no leak across runs)
 
     # -- views' data --
     def overview(self) -> dict:

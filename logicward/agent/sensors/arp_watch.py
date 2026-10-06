@@ -7,7 +7,7 @@ list so a rogue can be injected deterministically.
 """
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from logicward.engine.events import new_event
 

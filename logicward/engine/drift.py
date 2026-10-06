@@ -20,8 +20,8 @@ Detection is a DIFF — the rungs are never executed.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from difflib import SequenceMatcher
-from typing import Callable
 
 from logicward.engine import baseline as baseline_mod
 from logicward.engine import l5x
@@ -53,7 +53,7 @@ def _freeze(x):
     return tuple(_freeze(i) for i in x) if isinstance(x, list) else x
 
 
-def r2r_sig(r: "l5x.Rung") -> tuple:
+def r2r_sig(r: l5x.Rung) -> tuple:
     """A hashable content signature of a rung — output coil + full logic structure.
     Two rungs are 'equal' for alignment iff this matches (so a branch regroup or an
     inverted contact makes them UNequal and they land in a replace block)."""

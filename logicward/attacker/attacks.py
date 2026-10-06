@@ -111,7 +111,7 @@ class Attacker:
         import concurrent.futures
         t0 = time.time()
         payload = struct.pack(">BHH", 0x03, 0, 6)
-        
+
         def _send(_):
             return 1 if self._modbus(payload) is not None else 0
 

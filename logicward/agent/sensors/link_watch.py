@@ -6,8 +6,8 @@ carrier file) it degrades to a simulation toggle via `set_sim()`.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from logicward.engine.events import new_event
 

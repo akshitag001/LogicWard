@@ -18,10 +18,9 @@ pipeline still runs.
 """
 from __future__ import annotations
 
-import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from logicward.engine import baseline as bl
 from logicward.engine import l5x
@@ -76,7 +75,7 @@ class ProgramFileMonitor:
         self.emit(ev)
         return ev
 
-    def start(self) -> "ProgramFileMonitor":
+    def start(self) -> ProgramFileMonitor:
         if not _HAVE_WATCHDOG:
             return self
         handler = _Handler(self)
@@ -130,7 +129,7 @@ class BaselineFileMonitor:
         self.emit(ev)
         return ev
 
-    def start(self) -> "BaselineFileMonitor":
+    def start(self) -> BaselineFileMonitor:
         if not _HAVE_WATCHDOG:
             return self
         handler = _Handler(self)

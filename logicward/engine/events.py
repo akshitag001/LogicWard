@@ -14,9 +14,9 @@ import json
 import threading
 import uuid
 from collections import deque
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
 
 from logicward.engine import mitre_map
 from logicward.engine.classify import classify_drift

@@ -59,6 +59,18 @@ class SiteB:
                 pass
             self._stop.wait(config.POLL_INTERVAL_SEC)
 
+    def stop(self):
+        """Stop the detection loop, physics, and Modbus server (frees the port)."""
+        self._stop.set()
+        try:
+            self.ds.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.server.stop()
+        except Exception:  # noqa: BLE001
+            pass
+
     def reset(self):
         """Restore the plant to its baseline and clear detector memory."""
         self.ds.stop()

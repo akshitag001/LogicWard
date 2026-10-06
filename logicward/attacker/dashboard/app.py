@@ -14,9 +14,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import traceback
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request
 
 from logicward import config
 from logicward.attacker.attacks import Attacker
@@ -363,7 +362,7 @@ def main() -> None:
 
     app = create_app(args.host, args.modbus_port, args.program_port,
                      chem_host=args.chem_host, chem_port=args.chem_port)
-    print(f"\n  [*] VIGILO ATTACKER CONSOLE")
+    print("\n  [*] VIGILO ATTACKER CONSOLE")
     print(f"  Thermal (Pi) : {args.host}  (Modbus :{args.modbus_port}, Program :{args.program_port})")
     print(f"  Chemical (3D): {args.chem_host}:{args.chem_port}")
     print(f"  Console      : http://localhost:{args.port}/")

@@ -58,9 +58,9 @@ def main() -> int:
         fwd.emit("physical.rogue_device", "arp_watch",
                  {"mac": "de:ad:be:ef:00:01", "ip": "192.168.1.66", "vendor": "Unknown"})
         fwd.emit("resource.cpu_spike", "resource", {"cpu_percent": 97})
-        crit = fwd.emit("cyber.condition_stripping", "drift_engine",
-                        {"rung_id": "R07_DRUM_LOW_TRIP", "removed_input": "DRUM_LEVEL",
-                         "safety_critical": True})
+        fwd.emit("cyber.condition_stripping", "drift_engine",
+                 {"rung_id": "R07_DRUM_LOW_TRIP", "removed_input": "DRUM_LEVEL",
+                  "safety_critical": True})
         ok = fwd.flush()
         check(ok, "forwarder.flush() succeeded")
         check(fwd.pending == 0, "forwarder buffer drained after flush")

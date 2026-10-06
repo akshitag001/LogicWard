@@ -7,7 +7,7 @@ the dashboard, gated by role.
 """
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 
 class ResponseEngine:

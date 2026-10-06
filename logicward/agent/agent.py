@@ -72,7 +72,7 @@ class Agent:
             self.poll_once()
             self._stop.wait(self.poll_interval)
 
-    def start(self) -> "Agent":
+    def start(self) -> Agent:
         self.forwarder.start()
         if self.fim_program:
             self.fim_program.start()

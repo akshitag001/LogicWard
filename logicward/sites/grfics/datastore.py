@@ -184,7 +184,7 @@ class ChemicalDataStore:
             self._set_ir(tag, pts.raw(val, tag))
 
     # -- background physics loop --
-    def start(self, hz: float = 10.0) -> "ChemicalDataStore":
+    def start(self, hz: float = 10.0) -> ChemicalDataStore:
         if self._running:
             return self
         self._running = True
