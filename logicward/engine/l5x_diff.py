@@ -40,8 +40,19 @@ def _inline(a: str, b: str) -> tuple[list[dict], list[dict]]:
     return left, right
 
 
+#: Drop the volatile ``RungN`` number from a neutral-text line so content-aligned
+#: diffing (Prompt 1.4) survives a renumbering caused by an inserted rung.
+_RUNG_NUM = re.compile(r"/Rung\d+:")
+
+
+def _align_key(line: str) -> str:
+    return _RUNG_NUM.sub("/Rung:", line or "")
+
+
 def side_by_side(baseline_lines: list[str], live_lines: list[str]) -> list[dict]:
-    sm = difflib.SequenceMatcher(a=baseline_lines, b=live_lines, autojunk=False)
+    base_keys = [_align_key(x) for x in baseline_lines]
+    live_keys = [_align_key(x) for x in live_lines]
+    sm = difflib.SequenceMatcher(a=base_keys, b=live_keys, autojunk=False)
     rows: list[dict] = []
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag == "equal":

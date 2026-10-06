@@ -126,6 +126,19 @@ def main() -> int:
     second = eng.run_once()
     check(len(first) == 1 and len(second) == 0, "persistent mutation reported once, not every pass")
 
+    # ── Prompt 1.4: inserting ONE rung at the top must not false-alarm ───────
+    # New harmless rung at Number 0, every original rung renumbered 0..5 -> 1..6.
+    renum = base_text
+    for k in range(5, -1, -1):
+        renum = renum.replace(f'<Rung Number="{k}"', f'<Rung Number="{k + 1}"')
+    new_rung = ('       <Rung Number="0" Type="N"><Text>'
+                '<![CDATA[XIC(Spare_Input)OTE(Spare_Output);]]></Text></Rung>\n')
+    renum = renum.replace("      <RLLContent>\n", "      <RLLContent>\n" + new_rung)
+    evs = run_case(signed, renum.encode(), base_regs)
+    types = Counter(e["type"] for e in evs)
+    check(types.get("cyber.rung_injection") == 1 and len(evs) == 1,
+          f"1.4: one inserted+renumbered rung -> exactly ONE rung_injection ({dict(types)})")
+
     # ── Prompt 1.3: repeat attack after restore must NOT be silent ───────────
     inv = base_text.replace("LES(Drum_Level,Drum_Level_LL_SP)",
                             "GRT(Drum_Level,Drum_Level_LL_SP)").encode()

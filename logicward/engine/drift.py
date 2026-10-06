@@ -20,6 +20,7 @@ Detection is a DIFF — the rungs are never executed.
 from __future__ import annotations
 
 from collections import Counter
+from difflib import SequenceMatcher
 from typing import Callable
 
 from logicward.engine import baseline as baseline_mod
@@ -45,6 +46,19 @@ _INPUT_OPS = l5x.CONTACTS | l5x.COMPARES
 
 def _fmt(op: str, args) -> str:
     return f"{op}({','.join(args)})"
+
+
+def _freeze(x):
+    """Make a nested list hashable (for rung signatures)."""
+    return tuple(_freeze(i) for i in x) if isinstance(x, list) else x
+
+
+def r2r_sig(r: "l5x.Rung") -> tuple:
+    """A hashable content signature of a rung — output coil + full logic structure.
+    Two rungs are 'equal' for alignment iff this matches (so a branch regroup or an
+    inverted contact makes them UNequal and they land in a replace block)."""
+    return (r.output_coil, r.output_op, _freeze(r.logic_tree),
+            tuple((i.op, tuple(i.args)) for i in r.instructions))
 
 
 class DriftEngine:
@@ -163,31 +177,71 @@ class DriftEngine:
                     "reason": f"Setpoint {tag} changed {b} -> {c} in the program",
                 }, "program-download"))
 
-        # rung-level structural diff
+        # rung-level structural diff — align by CONTENT, not by Number (Prompt 1.4),
+        # so inserting one rung at the top doesn't renumber (and false-alarm) the rest.
         for rname in sorted(set(self.baseline_prog.routines) | set(live.routines)):
-            b_rungs = {r.number: r for r in self.baseline_prog.routines.get(rname, [])}
-            l_rungs = {r.number: r for r in live.routines.get(rname, [])}
-            for num in sorted(set(l_rungs) - set(b_rungs)):
-                r = l_rungs[num]
-                out.append(self._emit("cyber.rung_injection", {
-                    "rung_id": r.rung_id(rname), "text": r.text,
-                    "output_coil": r.output_coil, "safety_critical": r.safety_critical,
-                    "reason": f"Unauthorized rung injected: {r.text}",
-                }, "program-download"))
-            for num in sorted(set(b_rungs) - set(l_rungs)):
-                r = b_rungs[num]
-                out.append(self._emit("cyber.condition_stripping", {
-                    "rung_id": r.rung_id(rname), "removed": r.text,
-                    "output_coil": r.output_coil, "safety_critical": r.safety_critical,
-                    "reason": f"Entire protection rung removed: {r.text}",
-                }, "program-download"))
-            for num in sorted(set(b_rungs) & set(l_rungs)):
-                out += self._diff_rung(rname, b_rungs[num], l_rungs[num])
+            b_list = self.baseline_prog.routines.get(rname, [])
+            l_list = live.routines.get(rname, [])
+            out += self._align_and_diff(rname, b_list, l_list)
         return out
+
+    def _align_and_diff(self, rname: str, b_list: list, l_list: list) -> list:
+        """Content-align baseline vs live rungs, then diff matched pairs."""
+        out: list = []
+        b_sig = [r2r_sig(r) for r in b_list]
+        l_sig = [r2r_sig(r) for r in l_list]
+        sm = SequenceMatcher(a=b_sig, b=l_sig, autojunk=False)
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag == "equal":
+                continue                                   # identical rungs — nothing drifted
+            if tag == "delete":
+                out += [self._removed_rung(rname, r) for r in b_list[i1:i2]]
+            elif tag == "insert":
+                out += [self._injected_rung(rname, r) for r in l_list[j1:j2]]
+            elif tag == "replace":
+                out += self._diff_replace_block(rname, b_list[i1:i2], l_list[j1:j2])
+        return out
+
+    def _diff_replace_block(self, rname: str, b_block: list, l_block: list) -> list:
+        """Pair rungs in a replace block by output coil first, then similarity;
+        leftovers are whole-rung injects/removals."""
+        out: list = []
+        b_rem = list(b_block)
+        for live in l_block:
+            # 1) prefer a baseline rung with the SAME output coil
+            match = next((b for b in b_rem if b.output_coil == live.output_coil), None)
+            # 2) else the most similar remaining baseline rung (by neutral text)
+            if match is None and b_rem:
+                match = max(b_rem, key=lambda b: SequenceMatcher(
+                    a=b.text, b=live.text, autojunk=False).ratio())
+                if SequenceMatcher(a=match.text, b=live.text, autojunk=False).ratio() < 0.4:
+                    match = None
+            if match is not None:
+                b_rem.remove(match)
+                out += self._diff_rung(rname, match, live)
+            else:
+                out.append(self._injected_rung(rname, live))
+        for b in b_rem:                                    # unmatched baseline rungs = removed
+            out.append(self._removed_rung(rname, b))
+        return out
+
+    def _injected_rung(self, rname: str, r: l5x.Rung):
+        return self._emit("cyber.rung_injection", {
+            "rung_id": r.rung_id(rname), "text": r.text,
+            "output_coil": r.output_coil, "safety_critical": r.safety_critical,
+            "reason": f"Unauthorized rung injected: {r.text}",
+        }, "program-download")
+
+    def _removed_rung(self, rname: str, r: l5x.Rung):
+        return self._emit("cyber.condition_stripping", {
+            "rung_id": r.rung_id(rname), "removed": r.text,
+            "output_coil": r.output_coil, "safety_critical": r.safety_critical,
+            "reason": f"Entire protection rung removed: {r.text}",
+        }, "program-download")
 
     def _diff_rung(self, rname: str, b: l5x.Rung, live: l5x.Rung) -> list[dict | None]:
         out: list[dict | None] = []
-        rid = b.rung_id(rname)
+        rid = live.rung_id(rname)                           # alerts point at the LIVE rung number
 
         if b.output_coil != live.output_coil:
             out.append(self._emit("cyber.coil_hijack", {
