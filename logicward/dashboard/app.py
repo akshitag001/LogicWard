@@ -156,8 +156,30 @@ class Dashboard:
             except Exception:  # noqa: BLE001
                 self.chem = None
 
+        # Acknowledged alerts — event_ids an operator has acked. Acking HIDES an
+        # alert from the active feed; it never deletes evidence (append-only).
+        self.acked_ids: set[str] = set()
+
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+
+    def ack_event(self, event_id: str) -> None:
+        if event_id:
+            self.acked_ids.add(event_id)
+
+    def ack_all(self) -> int:
+        """Mark every currently-open (non-response) alert acknowledged. Returns
+        the number newly acked. Destroys nothing — the evidence log is untouched."""
+        newly = 0
+        for e in self.bus.snapshot():
+            eid = e.get("event_id")
+            if not eid or eid in self.acked_ids:
+                continue
+            if str(e.get("type", "")).startswith("response."):
+                continue
+            self.acked_ids.add(eid)
+            newly += 1
+        return newly
 
     # -- baseline lifecycle --
     def _load_or_capture_baseline(self) -> dict:
@@ -416,12 +438,34 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
         return jsonify({"events": evidence_mod.query(dash.bus.snapshot(), severity=sev,
                                                      site=site, limit=300)})
 
+    @app.post("/api/alerts/ack_all")
+    @require_cap("ack_all")
+    def api_alerts_ack_all():
+        # Acknowledge (hide from the active feed) every open alert. This NEVER
+        # deletes evidence — the forensic log on disk is append-only. Each
+        # bulk-ack is itself recorded as a response.operator_ack event.
+        n = dash.ack_all()
+        dash.bus.emit_new("response.operator_ack", "dashboard",
+                          {"reason": f"{session['user']} acknowledged all open alerts ({n})",
+                           "bulk": True, "count": n},
+                          identity={"who": session["user"], "channel": "operator"})
+        return jsonify({"status": "acknowledged", "acknowledged": n,
+                        "message": f"{n} alert(s) acknowledged. Evidence log is unchanged."})
+
     @app.post("/api/alerts/clear")
     @require_cap("ack_all")
-    def api_alerts_clear():
-        dash.bus.clear()
-        dash.drift.reset()
-        return jsonify({"status": "cleared", "message": "All alerts have been cleared from memory and disk."})
+    def api_alerts_clear_gone():
+        # Removed: this used to wipe the evidence log (MITRE ICS T0872 Indicator
+        # Removal on Host). Use POST /api/alerts/ack_all, which hides alerts
+        # without destroying the forensic record.
+        return jsonify({"error": "gone",
+                        "message": "Endpoint removed. Use POST /api/alerts/ack_all; "
+                                   "the evidence log is append-only and cannot be cleared."}), 410
+
+    @app.get("/api/alerts/acked")
+    @login_required
+    def api_alerts_acked():
+        return jsonify({"acked": sorted(dash.acked_ids)})
 
     @app.get("/api/evidence/report.pdf")
     @require_cap("evidence")
@@ -504,7 +548,9 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
     @require_cap("ack")
     def api_ack():
         d = request.get_json(silent=True) or {}
-        ev = dash.response.operator_ack(d.get("ref", ""), actor=session["user"], note=d.get("note"))
+        ref = d.get("ref", "")
+        dash.ack_event(ref)
+        ev = dash.response.operator_ack(ref, actor=session["user"], note=d.get("note"))
         return jsonify(ev)
 
     @app.post("/api/response/quarantine")

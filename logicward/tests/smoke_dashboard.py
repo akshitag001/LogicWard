@@ -93,6 +93,22 @@ def main() -> int:
         ack = soc.post("/api/response/ack", json={"ref": evs[0]["event_id"]})
         check(ack.status_code == 200, "response: acknowledge action works")
 
+        # -- Prompt 2.1: "Acknowledge all" must NOT destroy the evidence log --
+        ev_before = [ln for ln in config.EVIDENCE_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        api_before = len(soc.get("/api/evidence").get_json()["events"])
+        ackall = soc.post("/api/alerts/ack_all")
+        check(ackall.status_code == 200 and "acknowledged" in ackall.get_json(),
+              "POST /api/alerts/ack_all acknowledges (no delete)")
+        ev_after = [ln for ln in config.EVIDENCE_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        check(len(ev_after) == len(ev_before) + 1,
+              f"ack_all keeps evidence log + appends 1 ack event ({len(ev_before)}->{len(ev_after)})")
+        api_after = len(soc.get("/api/evidence").get_json()["events"])
+        check(api_after >= api_before, f"/api/evidence still returns every event ({api_after} >= {api_before})")
+        gone = soc.post("/api/alerts/clear")
+        check(gone.status_code == 410, f"legacy /api/alerts/clear returns 410 Gone (got {gone.status_code})")
+        acked_state = soc.get("/api/alerts/acked").get_json()
+        check(evs[0]["event_id"] in acked_state["acked"], "single-acked event id is tracked server-side")
+
         # RBAC negatives
         op = login(app, "operator", "operator123")
         check(op.get("/api/evidence/report.pdf").status_code == 403, "operator CANNOT export PDF (403)")

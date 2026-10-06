@@ -27,6 +27,7 @@
   const acked = new Set();
   const expanded = new Set();   // event_ids whose Wazuh-style log detail is expanded
   let catFilter = "all";        // Alerts category filter: all | external | internal | mistake
+  let showAcked = false;        // Alerts feed: reveal acknowledged (hidden-by-default) alerts
   const CAT_LABEL = { external: "EXTERNAL", internal: "INTERNAL", mistake: "MISTAKE" };
 
   // ---- multi-site ----
@@ -177,11 +178,22 @@
     jpost("/api/baseline/lock").then(r => toast("Baseline re-locked · " + (r.hash || "").slice(7, 19))));
   const restoreBtn = $("#btn-restore"); if (restoreBtn) restoreBtn.addEventListener("click", () =>
     jpost("/api/response/restore").then(() => toast("Approved baseline restored")));
-  const clearLogsBtn = $("#btn-clear-logs"); if (clearLogsBtn) clearLogsBtn.addEventListener("click", () =>
-    jpost("/api/alerts/clear").then(() => { toast("All alerts cleared"); setTimeout(() => window.location.reload(), 500); }));
+  function ackAll() {
+    jpost("/api/alerts/ack_all").then(r => {
+      (events || []).forEach(e => { if (!(e.type || "").startsWith("response.")) acked.add(e.event_id); });
+      toast((r.acknowledged || 0) + " alert(s) acknowledged · evidence kept");
+      flagMimic(); render();
+    });
+  }
+  const clearLogsBtn = $("#btn-clear-logs"); if (clearLogsBtn) clearLogsBtn.addEventListener("click", ackAll);
   // Alert-feed card-header actions (mirror the topbar controls)
-  const ackAllBtn = $("#btn-ack-all"); if (ackAllBtn) ackAllBtn.addEventListener("click", () =>
-    jpost("/api/alerts/clear").then(() => { toast("All alerts cleared"); setTimeout(() => window.location.reload(), 500); }));
+  const ackAllBtn = $("#btn-ack-all"); if (ackAllBtn) ackAllBtn.addEventListener("click", ackAll);
+  const showAckBtn = $("#btn-show-acked"); if (showAckBtn) showAckBtn.addEventListener("click", () => {
+    showAcked = !showAcked;
+    showAckBtn.classList.toggle("active", showAcked);
+    showAckBtn.textContent = showAcked ? "Hide acknowledged" : "Show acknowledged";
+    render();
+  });
   const restoreAlertsBtn = $("#btn-restore-alerts"); if (restoreAlertsBtn) restoreAlertsBtn.addEventListener("click", () =>
     jpost("/api/response/restore").then(() => toast("Approved baseline restored")));
   // pause live updates + "view all" jump
@@ -203,8 +215,7 @@
 
   // ---- role quick-action bar (each button is capability-gated in the template) ----
   const gotoAlerts = () => { const n = document.querySelector('.nav-item[data-tab="alerts"]'); if (n) n.click(); };
-  const raAck = $("#ra-ack"); if (raAck) raAck.addEventListener("click", () =>
-    jpost("/api/alerts/clear").then(() => { toast("All alerts acknowledged"); setTimeout(() => window.location.reload(), 500); }));
+  const raAck = $("#ra-ack"); if (raAck) raAck.addEventListener("click", ackAll);
   const raLock = $("#ra-lock"); if (raLock) raLock.addEventListener("click", () =>
     jpost("/api/baseline/lock").then(r => toast("Baseline re-locked · " + (r.hash || "").slice(7, 19))));
   const raRestore = $("#ra-restore"); if (raRestore) raRestore.addEventListener("click", () =>
@@ -711,21 +722,25 @@
 
   function render() {
     const vis = events.filter(siteVisible);
-    const crit = vis.filter(e => e.severity === "critical").length;
-    const badge = $("#alert-badge"); badge.textContent = vis.length;
+    const openVis = vis.filter(e => !acked.has(e.event_id));
+    const crit = openVis.filter(e => e.severity === "critical").length;
+    const badge = $("#alert-badge"); badge.textContent = openVis.length;
     badge.style.background = crit ? "var(--crit)" : "var(--muted-2)";
 
     if (activeTab === "alerts") {
       const box = $("#alerts-table"); box.innerHTML = "";
-      const list = sortedEvents(vis).filter(e => catFilter === "all" || e.category === catFilter);
+      const open = vis.filter(e => showAcked || !acked.has(e.event_id));
+      const list = sortedEvents(open).filter(e => catFilter === "all" || e.category === catFilter);
       list.forEach(e => box.appendChild(alertsTableRow(e)));
       if (!list.length) box.appendChild(el("div", "dtbl-empty",
-        vis.length ? ("No " + catFilter + "-category alerts.") : "No drift. Live program and registers match the signed baseline on both sites."));
+        vis.length ? (acked.size && !showAcked ? "No open alerts — all acknowledged. Use ‘Show acknowledged’ to review them." : "No " + catFilter + "-category alerts.") : "No drift. Live program and registers match the signed baseline on both sites."));
       const sum = $("#alerts-summary");
       if (sum) {
-        const byCat = (c) => vis.filter(e => e.category === c).length;
+        const openCount = vis.filter(e => !acked.has(e.event_id)).length;
+        const ackCount = vis.length - openCount;
+        const byCat = (c) => open.filter(e => e.category === c).length;
         sum.textContent = vis.length
-          ? (vis.length + " open · " + crit + " critical · " + byCat("external") + " ext / " + byCat("internal") + " int / " + byCat("mistake") + " mistake")
+          ? (openCount + " open · " + crit + " critical · " + ackCount + " acked · " + byCat("external") + " ext / " + byCat("internal") + " int / " + byCat("mistake") + " mistake")
           : "no alerts";
       }
     }
