@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # LogicWard — launch the SOC dashboard on the laptop, reading the REAL Pi.
 #
-#   .\deploy\run_laptop.ps1                       # Pi at siddhesh-pi.local
+#   .\deploy\run_laptop.ps1                       # Pi at <plc-host>-pi.local
 #   .\deploy\run_laptop.ps1 -PiHost 192.168.1.42  # or an explicit IP
 #
 # The dashboard also hosts /api/ingest, so the Pi agent POSTs its events here.
@@ -13,7 +13,7 @@
 # firewall). See STARTUP_MANUAL.md "Two-laptop attacker setup".
 # ─────────────────────────────────────────────────────────────────────────────
 param(
-  [string]$PiHost = "siddhesh.local",
+  [string]$PiHost = "<plc-host>.local",
   [string]$Token  = "logicward-dev-token-change-me",
   [switch]$OpenChemToLan
 )

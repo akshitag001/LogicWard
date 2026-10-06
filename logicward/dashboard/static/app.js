@@ -432,8 +432,8 @@
   }
   const PLANE_DEFS = [
     ["cyber.", "cyber.*", "accent", "L5X structural diff + Modbus register diff on the laptop engine."],
-    ["physical.", "physical.*", "high", "Pi agent: link carrier, ARP allowlist, GPIO enclosure switch."],
-    ["resource.", "resource.*", "warn", "Pi agent: CPU / RAM sampling — DDoS impact signal."],
+    ["physical.", "physical.*", "high", "Edge agent (simulated): link carrier, ARP allowlist, GPIO enclosure switch."],
+    ["resource.", "resource.*", "warn", "Edge agent (simulated): CPU / RAM sampling — DDoS impact signal."],
   ];
   function renderPlanes() {
     const box = $("#ov-planes"); if (!box) return;
@@ -561,9 +561,9 @@
     setStat("mem", t.mem, 80, 90, 1);
     setStat("temp", t.temp, 70, 80, 100 / 90);      // bar scaled to a 0–90 °C range
     const host = $("#tlm-host");
-    if (host) host.textContent = (t.host || "—") + (t.source === "pi" ? " · Pi" : "");
+    if (host) host.textContent = (t.host || "—") + (t.source === "pi" ? " · edge" : "");
     const src = $("#tlm-src");
-    if (src) { src.textContent = t.source === "pi" ? "from Pi agent" : "local psutil"; src.className = "tlm-src" + (t.source === "pi" ? " pi" : ""); }
+    if (src) { src.textContent = t.source === "pi" ? "Edge agent: live" : "Edge agent: simulated (local psutil)"; src.className = "tlm-src" + (t.source === "pi" ? " pi" : ""); }
     if (t.cpu != null) { tlmCpu.push(t.cpu); if (tlmCpu.length > TLM_MAX) tlmCpu.shift(); }
     const line = $("#tlm-cpu-line");
     if (line && tlmCpu.length) {

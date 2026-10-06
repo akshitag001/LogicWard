@@ -186,7 +186,7 @@ def _run_ssh_command(host: str, commands: list[str]) -> str:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         password = os.environ.get("PI_PASSWORD", "123456789")
-        username = os.environ.get("PI_USERNAME", "siddhesh")
+        username = os.environ.get("PI_USERNAME", "<plc-host>")
         client.connect(host, username=username, password=password, timeout=10)
         output_lines = []
         for cmd in commands:

@@ -9,7 +9,7 @@ def main():
     p.add_argument("--laptop-ip", required=True)
     args = p.parse_args()
 
-    PI_USER = os.environ.get("PI_USERNAME", "siddhesh")
+    PI_USER = os.environ.get("PI_USERNAME", "<plc-host>")
     PI_PASS = os.environ.get("PI_PASSWORD", "123456789")
 
     print(f"Connecting to Pi at {args.pi_ip}...")

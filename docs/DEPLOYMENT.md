@@ -58,3 +58,25 @@ OT is **passive-first**: never inject traffic that could disturb a PLC.
   MITRE-for-ICS, attacker attribution, attack categorization, forensic PDF, multi-site SOC, red-team console.
 - **Product:** passive SPAN/TAP sensors per cell → central collector → SIEM-forwardable, plus per-OEM
   parsers and protocol collectors to widen coverage.
+
+## Optional: split deployment on edge hardware (Raspberry Pi)
+
+LogicWard presents as a single-machine simulation lab by default
+(`python -m logicward.dashboard.app` runs an in-process PLC — no hardware needed).
+The same code also runs **split** across two hosts, which is how it was originally
+validated (tested on a Raspberry Pi 4 as the PLC host):
+
+- **PLC host (`<plc-host>.local`)** runs the Modbus server + program endpoints and a thin
+  edge agent (network/host/physical sensors). Start it with `deploy/run_pi.sh`.
+- **SOC host (laptop)** runs the detection engine + dashboard against the remote PLC:
+  set `LOGICWARD_EMBED_PLANT=0` and `LOGICWARD_PI_HOST=<plc-host>.local`, then
+  `deploy/run_laptop.ps1 -PiHost <plc-host>.local`.
+
+The switch between embedded and remote is the single seam `engine/sources.py`
+(`EmbeddedPlant` vs `RemotePlant`); detection logic is identical either way. All edge
+sensors have simulation fallbacks (`set_sim`/`trigger_sim`/`observe`), so the whole
+pipeline — and the test suite — runs hardware-free on a laptop. When no edge agent is
+connected, the dashboard shows **"Edge agent: simulated"** rather than an error.
+
+Helper scripts for the hardware path live under `deploy/` (`pi_bootstrap.sh`,
+`pi_tools/`). Replace `<plc-host>` with your PLC host's name/IP.

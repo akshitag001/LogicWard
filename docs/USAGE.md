@@ -186,7 +186,7 @@ Each program-download mutation also trips the passive FIM sensor
 
 Examples:
 ```bash
-python -m logicward.attacker.attacks --host siddhesh.local logic-inversion
+python -m logicward.attacker.attacks --host <plc-host>.local logic-inversion
 python -m logicward.attacker.attacks --host 10.119.190.53 --modbus-port 5020 force-coil
 python -m logicward.attacker.attacks --host 10.119.190.53 ddos --count 1000
 ```
@@ -202,15 +202,15 @@ Topology: **Pi** = the PLC + sensor agent; **laptop** = engine + dashboard; **at
 > **Network tip (verified):** campus/enterprise Wi-Fi often enables **client isolation**,
 > which blocks the laptop↔Pi traffic this needs. A **phone hotspot** is the reliable
 > fallback — connect *both* devices to it. Confirm reachability first: from the laptop
-> `ping siddhesh.local`, and from the Pi `ping <laptop-ip>`.
+> `ping <plc-host>.local`, and from the Pi `ping <laptop-ip>`.
 
-### 7.1 On the Pi (hostname `siddhesh`, user `siddhesh`)
+### 7.1 On the Pi (hostname `<plc-host>`, user `<plc-host>`)
 
-SSH in from the laptop (Raspberry Pi OS advertises `siddhesh.local` over mDNS):
+SSH in from the laptop (Raspberry Pi OS advertises `<plc-host>.local` over mDNS):
 ```bash
-ssh siddhesh@siddhesh.local            # password: the one set in Pi Imager
+ssh <plc-host>@<plc-host>.local            # password: the one set in Pi Imager
 # re-flashed the Pi? clear the stale host key first:
-#   ssh-keygen -R siddhesh.local
+#   ssh-keygen -R <plc-host>.local
 ```
 
 Get the project onto the Pi, then bootstrap (venv + deps incl. scapy/gpiozero, writes
@@ -222,7 +222,7 @@ git clone https://github.com/positromen/Adani-Project-OT.git && cd Adani-Project
 # If the repo is PRIVATE (the Pi can't clone it) — copy the tree from the laptop instead.
 # Run this ON THE LAPTOP from the project folder:
 #   tar czf - --exclude=.git --exclude=logicward/data --exclude=.venv logicward deploy requirements.txt \
-#     | ssh siddhesh@siddhesh.local "mkdir -p ~/Adani-Project-OT && tar xzf - -C ~/Adani-Project-OT"
+#     | ssh <plc-host>@<plc-host>.local "mkdir -p ~/Adani-Project-OT && tar xzf - -C ~/Adani-Project-OT"
 # then back on the Pi:  cd ~/Adani-Project-OT
 
 bash deploy/pi_bootstrap.sh 10.119.190.79        # <- your laptop's IP
@@ -241,7 +241,7 @@ netsh advfirewall firewall add rule name="LogicWard" dir=in action=allow protoco
 
 Start the dashboard in **remote** mode (reads the real Pi):
 ```powershell
-.\deploy\run_laptop.ps1 -PiHost siddhesh.local
+.\deploy\run_laptop.ps1 -PiHost <plc-host>.local
 # or by IP:  .\deploy\run_laptop.ps1 -PiHost 10.119.190.53
 ```
 Open **http://localhost:8080/** (login `soc/soc123`). The Live Plant now reflects the
@@ -250,8 +250,8 @@ Pi's real Modbus registers; the Pi agent's physical/resource/FIM events stream i
 ### 7.3 From the attacker box (or the laptop)
 
 ```bash
-python -m logicward.attacker.attacks --host siddhesh.local logic-inversion
-python -m logicward.attacker.attacks --host siddhesh.local ddos --count 800
+python -m logicward.attacker.attacks --host <plc-host>.local logic-inversion
+python -m logicward.attacker.attacks --host <plc-host>.local ddos --count 800
 ```
 
 To fire the **physical** plane for real, the Pi needs a wired `eth0` (pull the cable →
@@ -338,7 +338,7 @@ Each prints `RESULT: N/N checks passed` and exits non-zero on any failure.
 | `pip install` fails on the Pi with "externally-managed-environment" | Use the venv (Bookworm/PEP 668): `python3 -m venv .venv && source .venv/bin/activate`. `pi_bootstrap.sh` does this for you. |
 | Dashboard shows no Pi data in remote mode | Same Wi-Fi? Pi services running (`bash deploy/run_pi.sh`)? Try the Pi's IP instead of `.local`. Check `LOGICWARD_PI_HOST`. |
 | Pi agent events never appear | Windows Firewall — allow inbound TCP 8080 (§7.2). Confirm `LOGICWARD_INGEST_URL` points at the laptop IP and the `LOGICWARD_TOKEN` matches both sides. |
-| `siddhesh.local` won't resolve on Windows | Install Bonjour, or use the Pi's numeric IP (`hostname -I` on the Pi). |
+| `<plc-host>.local` won't resolve on Windows | Install Bonjour, or use the Pi's numeric IP (`hostname -I` on the Pi). |
 | Laptop & Pi can't reach each other on campus Wi-Fi | Client isolation — switch both to a phone hotspot (§7). |
 | Pi can't `git clone` (asks for username) | The repo is private — copy the tree from the laptop instead (§7.1), or make the repo public. |
 | Rogue-device (ARP) sensor never fires | The live ARP sweep needs root: `SUDO_AGENT=1 bash deploy/run_pi.sh`. |
