@@ -4,7 +4,7 @@ Single onboarding document for **any** coding agent (or human) picking up LogicW
 first, then the deeper docs it points to. It tells you what the system is, the invariants you must
 not break, the exact contracts, and where to make the common changes.
 
-> Companion docs — **[DESIGN.md](DESIGN.md)** (architecture, the authoritative spec) · **[USAGE.md](USAGE.md)** (run/demo/deploy how-to) · **[README.md](README.md)** (overview) · **[CLAUDE.md](CLAUDE.md)** (same guidance, Claude-Code-flavored). This file is the vendor-neutral superset for orientation.
+> Companion docs — **[DESIGN.md](docs/DESIGN.md)** (architecture, the authoritative spec) · **[USAGE.md](docs/USAGE.md)** (run/demo/deploy how-to) · **[README.md](README.md)** (overview) · **[CLAUDE.md](CLAUDE.md)** (same guidance, Claude-Code-flavored). This file is the vendor-neutral superset for orientation.
 
 ---
 
@@ -16,7 +16,7 @@ running control logic or live process state drifts from a cryptographically sign
 baseline**. Pure Python package under `logicward/` (Flask + raw-socket Modbus + `lxml`). **No build
 step.**
 
-**Status: built and green — 98/98 automated checks across 7 suites; verified end-to-end on a real
+**Status: built and green — 213 automated checks across 10 suites (run `pytest -q`); verified end-to-end on a real
 Raspberry Pi 4 ↔ laptop over Wi-Fi.** Only optional polish remains (see §11).
 
 ---
@@ -60,14 +60,14 @@ python -m logicward.attacker.attacks [--host H] [--modbus-port P] [--count N] <c
 ```
 
 Dashboard logins (roles gate what's visible/actionable, enforced server-side):
-`operator/operator123` · `engineer/engineer123` · `soc/soc123`.
+`operator/operator123` · `engineer/engineer123` · `netsec/netsec123` · `soc/soc123` · `vendor/vendor123` · `ciso/ciso123`.
 
 **Tests** — no pytest. Each suite is a standalone script printing `RESULT: N/N checks passed`,
 non-zero exit on failure:
 ```bash
 python -m logicward.tests.smoke_drift    # one of: bus l5x plant drift agent dashboard attacker grfics multisite classify
 ```
-Run all (183 checks): loop `for t in bus l5x plant drift agent dashboard attacker grfics multisite classify; do python -m logicward.tests.smoke_$t; done`.
+Run all via `pytest -q`, or loop `for t in bus l5x plant drift agent dashboard attacker grfics multisite classify; do python -m logicward.tests.smoke_$t; done`.
 
 ---
 
@@ -221,7 +221,7 @@ matching ICS technique) — never fabricate an ID.
 
 Suites are standalone scripts (not unit tests): they spin up **real** servers on ephemeral ports and
 exercise real HTTP paths. Each prints `RESULT: N/N checks passed` and exits non-zero on failure. The
-full set is **183 checks** (bus 15, l5x 16, plant 14, drift 18, agent 11, dashboard 20, attacker 10,
+full set is **213 checks** (bus 15, l5x 19, plant 14, drift 25, agent 11, dashboard 40, attacker 10,
 grfics 39, multisite 20, classify 20).
 When you add a detector/mutation/sensor, extend the matching suite and keep the total honest.
 
@@ -249,14 +249,12 @@ When you add a detector/mutation/sensor, extend the matching suite and keep the 
 The appliance is feature-complete and verified. Sensible next work, roughly in priority order:
 1. **Harden the two-host demo** — a preflight check script (ports reachable, token match, clock skew),
    and auto-recover if the agent's laptop link blips.
-2. **A tiny test aggregator** (`tests/run_all.py`) that loops the 7 suites and prints a combined
-   `98/98` — today it's a manual shell loop.
-3. **Resource plane realism** — wire the real DDoS flood (`attacks.py ddos`) to a measured CPU spike on
+2. **Resource plane realism** — wire the real DDoS flood (`attacks.py ddos`) to a measured CPU spike on
    the Pi rather than the simulated hook.
-4. **Dashboard polish** — a severity-over-time sparkline and a MITRE-technique tally on Overview
+3. **Dashboard polish** — a severity-over-time sparkline and a MITRE-technique tally on Overview
    (data already in the evidence log). Follow the `dataviz` conventions if adding charts.
-5. **Screenshots/GIF** for the README and demo guide.
-6. **Optional** — Docker for the laptop-side services only (engine+dashboard); the Pi sensors stay
+4. **Screenshots/GIF** for the README and demo guide.
+5. **Optional** — Docker for the laptop-side services only (engine+dashboard); the Pi sensors stay
    native. Deliberately deferred (hardware coupling + live-demo robustness).
 
 Keep every change behind a passing smoke suite, respect the prime directive (§2), and keep commits

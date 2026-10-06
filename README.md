@@ -2,9 +2,9 @@
 
 **Live OT drift-detection appliance** — detect unauthorized PLC logic changes on a simulated thermal power plant before they become operational risk.
 
-> **[USAGE.md](USAGE.md)** — complete how-to (run, demo, dashboard tour, attacker CLI, Pi deployment, config, troubleshooting).
-> **[LogicWard_Demo_Guide.pdf](LogicWard_Demo_Guide.pdf)** — presenter runbook (attack → detection → dashboard → MITRE, act by act).
-> Full specification: **[DESIGN.md](DESIGN.md)** · shareable **[LogicWard_Design.pdf](LogicWard_Design.pdf)** (also `.tex`).
+> **[USAGE.md](docs/USAGE.md)** — complete how-to (run, demo, dashboard tour, attacker CLI, Pi deployment, config, troubleshooting).
+> **[LogicWard_Demo_Guide.pdf](docs/LogicWard_Demo_Guide.pdf)** — presenter runbook (attack → detection → dashboard → MITRE, act by act).
+> Full specification: **[DESIGN.md](docs/DESIGN.md)** · shareable **[LogicWard_Design.pdf](LogicWard_Design.pdf)** (also `.tex`).
 
 ## What it is
 
@@ -21,7 +21,7 @@ The PLC "program" is a real **Rockwell L5X** file — **data to baseline and dif
 - **GitHub-style diff** — side-by-side red/green rung diff with word-level highlights.
 - **Animated SCADA mimic** — a live single-line diagram of the plant (fuel → boiler → turbine → generator → 115 kV grid); components redline, pulse, and pin their MITRE technique the instant an attack lands, click to acknowledge.
 - **Evidence log (SIEM-ready JSONL) + signed PDF** forensic report.
-- **RBAC dashboard** — Operator / Engineer / SOC Analyst, with role-gated response actions.
+- **RBAC dashboard** — six OT roles (operator, control engineer, network engineer, SOC analyst, vendor, CISO), each with capability-gated response actions.
 
 ## System architecture
 
@@ -162,7 +162,9 @@ graph LR
 
 Runs single-machine by default (an **embedded plant**); set `LOGICWARD_EMBED_PLANT=0` for the real Pi split — **verified end-to-end on a Raspberry Pi 4 ↔ laptop over Wi-Fi** (cyber detection + agent event-forwarding both live).
 
-## Status — built & verified (98/98 automated checks)
+## Status — built & verified
+
+`pytest` runs **213 checks across 10 suites** (see the CI badge). Run them with `pytest -q`.
 
 | Stage | Component | State |
 |------|-----------|-------|
@@ -191,11 +193,11 @@ python -m logicward.attacker.demo_sequence --fast  # quick flow smoke
 python -m logicward.tests.smoke_drift      # (bus | l5x | plant | drift | agent | dashboard | attacker)
 ```
 
-Logins: `operator/operator123` · `engineer/engineer123` · `soc/soc123`.
+Logins: `operator/operator123` · `engineer/engineer123` · `netsec/netsec123` · `soc/soc123` · `vendor/vendor123` · `ciso/ciso123`.
 
 ## Run against a real Pi (split deployment) — verified
 
-Scripted in [`deploy/`](deploy/) and walked through in **[USAGE.md §7](USAGE.md)**. Tested on a Raspberry Pi 4 (Raspberry Pi OS 64-bit) and a Windows laptop sharing a Wi-Fi hotspot.
+Scripted in [`deploy/`](deploy/) and walked through in **[USAGE.md §7](docs/USAGE.md)**. Tested on a Raspberry Pi 4 (Raspberry Pi OS 64-bit) and a Windows laptop sharing a Wi-Fi hotspot.
 
 ```bash
 # On the Pi (both devices on the same Wi-Fi):
@@ -204,10 +206,10 @@ bash deploy/run_pi.sh                           # PLC (:5020) + program (:8081) 
 
 # On the laptop:
 #   (one-time) allow inbound 8080:  netsh advfirewall firewall add rule name="LogicWard" dir=in action=allow protocol=TCP localport=8080
-.\deploy\run_laptop.ps1 -PiHost siddhesh.local  # dashboard in remote mode (reads the Pi)
+.\deploy\run_laptop.ps1 -PiHost <plc-host>.local  # dashboard in remote mode (reads the Pi)
 
 # From the attacker box (or the laptop):
-python -m logicward.attacker.attacks --host siddhesh.local logic-inversion
+python -m logicward.attacker.attacks --host <plc-host>.local logic-inversion
 ```
 
 > The agent uses `wlan0` on a Wi-Fi Pi (the bootstrap sets this). If the repo is **private**, the Pi can't `git clone` it — copy the working tree from the laptop instead (`tar … | ssh pi "tar x"`), or make the repo public. Campus Wi-Fi often blocks device-to-device (client isolation); a phone hotspot is the reliable fallback.
