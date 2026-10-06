@@ -116,6 +116,26 @@ def main() -> int:
     second = eng.run_once()
     check(len(first) == 1 and len(second) == 0, "persistent mutation reported once, not every pass")
 
+    # ── Prompt 1.3: repeat attack after restore must NOT be silent ───────────
+    inv = base_text.replace("LES(Drum_Level,Drum_Level_LL_SP)",
+                            "GRT(Drum_Level,Drum_Level_LL_SP)").encode()
+    state = {"xml": base_xml}
+    bus = EventBus()
+    eng = DriftEngine(bus, signed, program_source=lambda: state["xml"],
+                      register_source=lambda: base_regs)
+    state["xml"] = inv
+    p1 = eng.run_once()
+    check(sum(1 for e in p1 if e["type"] == "cyber.logic_inversion") == 1,
+          "1.3: first inversion -> 1 logic_inversion")
+    state["xml"] = base_xml
+    p2 = eng.run_once()
+    check(any(e["type"] == "cyber.drift_cleared" for e in p2),
+          "1.3: restoring baseline -> cyber.drift_cleared")
+    state["xml"] = inv
+    p3 = eng.run_once()
+    check(sum(1 for e in p3 if e["type"] == "cyber.logic_inversion") == 1,
+          "1.3: SAME inversion re-applied after restore -> alerts again (not silent)")
+
     passed = sum(1 for ok, _ in _checks if ok)
     total = len(_checks)
     print(f"\n{'='*52}\n  RESULT: {passed}/{total} checks passed\n{'='*52}")

@@ -64,38 +64,66 @@ class DriftEngine:
         self.program_source = program_source
         self.register_source = register_source
         self.who_source = who_source
-        self._seen: set = set()
+        # State-based dedup (Prompt 1.3): the set of drift keys active *right now*.
+        # We emit when a key APPEARS and a cyber.drift_cleared when it DISAPPEARS,
+        # so an attack that is restored and then re-applied alerts again.
+        self._active: dict = {}
+        self._pass: dict = {}
         self.baseline_valid = baseline_mod.verify(signed_baseline)
 
     # -- public --
     def run_once(self) -> list[dict]:
-        """One detection pass. Returns the events emitted this pass (deduped)."""
-        out = self._structural()
+        """One detection pass. Emits on drift appearance + disappearance."""
+        self._pass = {}
+        self._structural()
         if self.register_source is not None:
-            out += self._registers()
-        return [e for e in out if e]
+            self._registers()
+        return self._finish_pass()
 
     def reset(self) -> None:
-        """Clear dedup memory (e.g. after a re-baseline)."""
-        self._seen.clear()
+        """Clear drift state (e.g. after a re-baseline) — next pass re-evaluates."""
+        self._active = {}
+        self._pass = {}
 
-    # -- emit with idempotency --
-    def _emit(self, etype: str, details: dict, channel: str) -> dict | None:
+    # -- state-based emit: record this pass's drifts, diff against the last pass --
+    def _emit(self, etype: str, details: dict, channel: str) -> None:
         anchor = details.get("rung_id") or details.get("tag") or details.get("coil") or ""
         key = (etype, anchor, str(details.get("current")))
-        if key in self._seen:
-            return None
-        self._seen.add(key)
         if "command" not in details:
             cmd = self._command(details, channel)
             if cmd:
                 details = {**details, "command": cmd}
-        who = "unknown"
-        if self.who_source:
-            tag = details.get("tag") or details.get("coil")
-            who = self.who_source(tag, channel) or "unknown"
-        return self.bus.emit_new(etype, self.source, details,
-                                 identity={"who": who, "channel": channel})
+        self._pass[key] = (etype, details, channel)
+
+    def _finish_pass(self) -> list[dict]:
+        emitted: list[dict] = []
+        # newly-appeared drifts -> alert
+        for key, (etype, details, channel) in self._pass.items():
+            if key in self._active:
+                continue
+            who = "unknown"
+            if self.who_source:
+                tag = details.get("tag") or details.get("coil")
+                who = self.who_source(tag, channel) or "unknown"
+            ev = self.bus.emit_new(etype, self.source, details,
+                                   identity={"who": who, "channel": channel})
+            if ev:
+                emitted.append(ev)
+        # drifts that disappeared since last pass -> informational "cleared"
+        for key, (etype, details, channel) in self._active.items():
+            if key in self._pass:
+                continue
+            anchor = details.get("rung_id") or details.get("tag") or details.get("coil") or ""
+            ev = self.bus.emit_new("cyber.drift_cleared", self.source, {
+                "cleared_type": etype, "rung_id": details.get("rung_id"),
+                "tag": details.get("tag"), "coil": details.get("coil"),
+                "safety_critical": False,
+                "reason": f"Drift cleared: {etype} on {anchor or 'baselined item'} returned to baseline",
+            }, identity={"who": "system", "channel": channel})
+            if ev:
+                emitted.append(ev)
+        self._active = dict(self._pass)
+        return emitted
 
     def _command(self, details: dict, channel: str) -> str | None:
         """Reconstruct the literal op that produced this drift (the 'how')."""

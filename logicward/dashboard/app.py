@@ -283,6 +283,7 @@ class Dashboard:
     def _restore_baseline_program(self) -> bool:
         """Restore hook: re-download the approved program to the plant."""
         l5x_str = self.signed["manifest"]["l5x"]
+        self.drift.reset()   # Prompt 1.3: clear drift state so a re-applied attack alerts again
         live = getattr(self.plant, "live_path", None)
         if live is not None:
             live.write_text(l5x_str, encoding="utf-8")

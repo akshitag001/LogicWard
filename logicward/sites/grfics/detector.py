@@ -23,31 +23,57 @@ class ChemicalDriftDetector:
         self.who_source = who_source               # tag -> attacker source IP (or None)
         self.source = source
         self.baseline = register_source()          # {holding:{tag:raw}, coils:{tag:bool}}
-        self._seen: set = set()
+        # State-based dedup (Prompt 1.3): emit on appearance + a drift_cleared on
+        # disappearance, so a restored-then-re-applied attack alerts again.
+        self._active: dict = {}
+        self._pass: dict = {}
 
     def relock(self) -> None:
         self.baseline = self.register_source()
-        self._seen.clear()
+        self._active = {}
+        self._pass = {}
 
     def reset(self) -> None:
-        self._seen.clear()
+        self._active = {}
+        self._pass = {}
 
-    def _emit(self, etype: str, details: dict, channel: str):
+    def _emit(self, etype: str, details: dict, channel: str) -> None:
         anchor = details.get("tag") or details.get("coil") or ""
         key = (etype, anchor, str(details.get("current")))
-        if key in self._seen:
-            return None
-        self._seen.add(key)
         details = {**details, "site": SITE_ID}
-        who = "unknown"
-        if self.who_source:
-            tag = details.get("tag") or details.get("coil")
-            if tag:
-                who = self.who_source(tag) or "unknown"
-        return self.bus.emit_new(etype, self.source, details,
-                                 identity={"who": who, "channel": channel})
+        self._pass[key] = (etype, details, channel)
+
+    def _finish_pass(self) -> list[dict]:
+        emitted: list[dict] = []
+        for key, (etype, details, channel) in self._pass.items():
+            if key in self._active:
+                continue
+            who = "unknown"
+            if self.who_source:
+                tag = details.get("tag") or details.get("coil")
+                if tag:
+                    who = self.who_source(tag) or "unknown"
+            ev = self.bus.emit_new(etype, self.source, details,
+                                   identity={"who": who, "channel": channel})
+            if ev:
+                emitted.append(ev)
+        for key, (etype, details, channel) in self._active.items():
+            if key in self._pass:
+                continue
+            anchor = details.get("tag") or details.get("coil") or ""
+            ev = self.bus.emit_new("cyber.drift_cleared", self.source, {
+                "site": SITE_ID, "cleared_type": etype,
+                "tag": details.get("tag"), "coil": details.get("coil"),
+                "safety_critical": False,
+                "reason": f"Drift cleared: {etype} on {anchor or 'baselined item'} returned to baseline",
+            }, identity={"who": "system", "channel": channel})
+            if ev:
+                emitted.append(ev)
+        self._active = dict(self._pass)
+        return emitted
 
     def run_once(self) -> list[dict]:
+        self._pass = {}
         snap = self.register_source() or {}
         base_hold = self.baseline.get("holding", {})
         base_coils = self.baseline.get("coils", {})
@@ -92,4 +118,4 @@ class ChemicalDriftDetector:
                 "reason": f"Control coil {tag} forced {bool(b)} -> {bool(cur)} over Modbus",
             }, "modbus-write"))
 
-        return [e for e in out if e]
+        return self._finish_pass()

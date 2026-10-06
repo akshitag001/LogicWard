@@ -35,6 +35,7 @@ BASE_WEIGHTS: dict[str, int] = {
     "cyber.register_change":     35,   # raw value moved — corroborated by other signals
     "cyber.baseline_tamper":     95,   # the signed baseline itself was altered off-platform
     "baseline.initial_capture":   0,   # trust-on-first-use capture (informational)
+    "cyber.drift_cleared":        0,   # a previously-detected drift returned to baseline (info)
     "physical.enclosure_open":   60,   # physical access to the cabinet
     "physical.rogue_device":     50,   # unknown MAC on the OT segment
     "physical.link_down":        45,   # cable pull / network isolation
