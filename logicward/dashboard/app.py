@@ -606,6 +606,7 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
         "coil-hijack": "Redirect the Feedwater_Trip output coil",
         "rung-injection": "Inject a hidden backdoor rung",
         "program-setpoint": "Lower the drum-level trip setpoint 220 → 40 in the program",
+        "branch-restructure": "Regroup the flame trip from AND to OR (weakens the interlock)",
     }
 
     @app.get("/api/insider/attacks")

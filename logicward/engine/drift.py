@@ -198,6 +198,18 @@ class DriftEngine:
 
         b_in = [(i.op, tuple(i.args)) for i in b.instructions if i.op in _INPUT_OPS]
         l_in = [(i.op, tuple(i.args)) for i in live.instructions if i.op in _INPUT_OPS]
+
+        # Pure branch restructure (Prompt 1.1): same instruction set, same output,
+        # but the AND/OR grouping changed — e.g. A·B -> A+B weakens a safety trip.
+        if (Counter(b_in) == Counter(l_in) and b.output_coil == live.output_coil
+                and b.logic_tree != live.logic_tree):
+            self._emit("cyber.branch_restructure", {
+                "rung_id": rid, "baseline": b.text, "current": live.text,
+                "safety_critical": b.safety_critical or live.safety_critical,
+                "reason": f"Rung branch structure changed (AND/OR regrouping) on {rid}: "
+                          f"{b.text} -> {live.text}",
+            }, "program-download")
+
         removed = list((Counter(b_in) - Counter(l_in)).elements())
         added = list((Counter(l_in) - Counter(b_in)).elements())
 

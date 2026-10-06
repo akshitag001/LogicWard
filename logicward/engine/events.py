@@ -31,6 +31,7 @@ BASE_WEIGHTS: dict[str, int] = {
     "cyber.logic_inversion":     75,   # a trip that now fires backwards
     "cyber.coil_hijack":         70,   # control redirected to the wrong actuator
     "cyber.rung_injection":      70,   # foreign logic added to the program
+    "cyber.branch_restructure":  75,   # AND/OR regrouping — e.g. a trip now fires on OR not AND
     "cyber.setpoint_drift":      55,   # threshold moved (escalates on a safety rung)
     "cyber.register_change":     35,   # raw value moved — corroborated by other signals
     "cyber.baseline_tamper":     95,   # the signed baseline itself was altered off-platform

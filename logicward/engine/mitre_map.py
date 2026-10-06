@@ -26,6 +26,7 @@ _MAP: dict[str, tuple[str, str, str, bool]] = {
     "cyber.logic_inversion":     ("Persistence",               "T0889", "Modify Program", True),
     "cyber.condition_stripping": ("Persistence",               "T0889", "Modify Program", True),
     "cyber.coil_hijack":         ("Persistence",               "T0889", "Modify Program", True),
+    "cyber.branch_restructure":  ("Persistence",               "T0889", "Modify Program", True),
     "cyber.rung_injection":      ("Lateral Movement",          "T0843", "Program Download", True),
     "physical.rogue_device":     ("Initial Access",            "T0848", "Rogue Master", True),
     "physical.link_down":        ("Inhibit Response Function", "T0814", "Denial of Service", True),

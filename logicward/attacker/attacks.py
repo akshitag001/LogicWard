@@ -55,12 +55,20 @@ def mut_rung_injection(xml: str) -> str:
     return xml.replace("      </RLLContent>", rung + "      </RLLContent>")
 
 
+def mut_branch_restructure(xml: str) -> str:
+    # Regroup the furnace flame trip from AND (A·B) to OR (A+B): the fuel trip now
+    # fires only if BOTH conditions relax, silently weakening the interlock.
+    return xml.replace("XIC(Plant_Running)XIO(Flame_Detected)OTE(Fuel_Trip)",
+                       "[XIC(Plant_Running),XIO(Flame_Detected)]OTE(Fuel_Trip)")
+
+
 MUTATORS = {
     "logic-inversion": mut_logic_inversion,
     "condition-stripping": mut_condition_stripping,
     "coil-hijack": mut_coil_hijack,
     "rung-injection": mut_rung_injection,
     "program-setpoint": mut_setpoint_drift,
+    "branch-restructure": mut_branch_restructure,
 }
 
 

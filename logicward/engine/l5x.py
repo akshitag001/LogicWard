@@ -36,6 +36,9 @@ VOLATILE_ATTRS = {
 }
 
 _TOKEN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)")
+#: Same shape as _TOKEN_RE but anchored, for scanning a rung left-to-right so we
+#: can see the branch delimiters [ ] , *between* instructions (Prompt 1.1).
+_INSTR_AT = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)")
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -61,6 +64,7 @@ class Rung:
     output_op: str | None
     output_coil: str | None
     safety_critical: bool
+    logic_tree: list = field(default_factory=list)   # serialized AND/OR input structure
 
     @property
     def inputs(self) -> list[Instruction]:
@@ -96,6 +100,88 @@ def parse_neutral_text(text: str) -> list[Instruction]:
         args = [a.strip() for a in raw_args.split(",") if a.strip()]
         out.append(Instruction(op.upper(), args))
     return out
+
+
+def _tokenize_rung(text: str) -> list[tuple]:
+    """Scan a rung into tokens: ('I', Instruction) | ('[',) | (']',) | (',',).
+
+    Commas INSIDE an instruction's parens (e.g. ``LES(A,B)``) are consumed as
+    part of that instruction token, so the only bare ``,`` tokens are branch
+    separators — which is exactly what distinguishes series (AND) from a
+    parallel ``[ … , … ]`` branch (OR).
+    """
+    toks: list[tuple] = []
+    s = text or ""
+    i, n = 0, len(s)
+    while i < n:
+        ch = s[i]
+        if ch in "[],":
+            toks.append((ch,))
+            i += 1
+        elif ch == ";" or ch.isspace():
+            i += 1
+        else:
+            m = _INSTR_AT.match(s, i)
+            if m:
+                args = [a.strip() for a in m.group(2).split(",") if a.strip()]
+                toks.append(("I", Instruction(m.group(1).upper(), args)))
+                i = m.end()
+            else:
+                i += 1
+    return toks
+
+
+def _parse_series(toks: list[tuple], pos: int) -> tuple[tuple, int]:
+    """Parse a series (AND) of nodes until a ``]`` or ``,`` (or end). A ``[`` opens
+    a parallel branch (OR) of comma-separated legs, each itself a series."""
+    children: list[tuple] = []
+    while pos < len(toks):
+        tag = toks[pos][0]
+        if tag in ("]", ","):
+            break
+        if tag == "[":
+            pos += 1
+            legs = []
+            leg, pos = _parse_series(toks, pos)
+            legs.append(leg)
+            while pos < len(toks) and toks[pos][0] == ",":
+                pos += 1
+                leg, pos = _parse_series(toks, pos)
+                legs.append(leg)
+            if pos < len(toks) and toks[pos][0] == "]":
+                pos += 1
+            children.append(("OR", legs))
+        else:  # ('I', Instruction)
+            children.append(("I", toks[pos][1]))
+            pos += 1
+    return ("AND", children), pos
+
+
+def _serialize_tree(node: tuple) -> list:
+    """Deterministic nested-list serialization of a logic tree node."""
+    if node[0] == "I":
+        instr: Instruction = node[1]
+        return ["I", instr.op, list(instr.args)]
+    return [node[0], [_serialize_tree(c) for c in node[1]]]
+
+
+def build_logic_tree(text: str) -> tuple[list, list[Instruction]]:
+    """Return (serialized input logic tree, [output Instructions]) for a rung.
+
+    Series = AND, ``[a,b]`` = OR(a,b); legs can nest. Outputs (OTE/OTL/OTU) at the
+    top level are split out so the structure of the *inputs* is what the tree
+    captures — flipping ``A·B`` to ``A+B`` changes the tree (and the hash) even
+    though the instruction set is identical.
+    """
+    tree, _ = _parse_series(_tokenize_rung(text), 0)
+    inputs: list[tuple] = []
+    outputs: list[Instruction] = []
+    for node in tree[1]:
+        if node[0] == "I" and node[1].op in OUTPUTS:
+            outputs.append(node[1])
+        else:
+            inputs.append(node)
+    return _serialize_tree(("AND", inputs)), outputs
 
 
 def _classify_output(instrs: list[Instruction]) -> tuple[str | None, str | None]:
@@ -154,10 +240,12 @@ def parse(xml: bytes | str) -> L5XProgram:
                 comment = " ".join((rung_el.findtext("Comment") or "").split())
                 instrs = parse_neutral_text(text)
                 out_op, out_coil = _classify_output(instrs)
+                tree, _outs = build_logic_tree(text)
                 rungs.append(Rung(
                     number=number, text=text, comment=comment,
                     instructions=instrs, output_op=out_op, output_coil=out_coil,
                     safety_critical=_is_safety_critical(out_coil),
+                    logic_tree=tree,
                 ))
             routines[routine.get("Name")] = sorted(rungs, key=lambda r: r.number)
 
@@ -186,6 +274,7 @@ def canonical(program: L5XProgram) -> dict:
                 {
                     "number": r.number,
                     "logic": [i.as_tuple() for i in r.instructions],
+                    "logic_tree": r.logic_tree,          # AND/OR structure (Prompt 1.1)
                     "output_coil": r.output_coil,
                     "safety_critical": r.safety_critical,
                 }

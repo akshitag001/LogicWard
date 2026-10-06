@@ -80,6 +80,16 @@ def main() -> int:
     check(e.get("severity") == "critical" and e["details"]["safety_critical"],
           f"stripping a safety condition scored critical (got {e.get('severity')})")
 
+    # ── 3b. branch restructure (AND -> OR), Prompt 1.1 ──────────────────────
+    or_rung = base_text.replace("XIC(Plant_Running)XIO(Flame_Detected)OTE(Fuel_Trip)",
+                                "[XIC(Plant_Running),XIO(Flame_Detected)]OTE(Fuel_Trip)")
+    evs = run_case(signed, or_rung.encode(), base_regs)
+    e = next((x for x in evs if x["type"] == "cyber.branch_restructure"), {})
+    check(len(evs) == 1 and e, "AND->OR regrouping -> 1 cyber.branch_restructure (no false coil/strip events)")
+    check(e.get("details", {}).get("safety_critical") and e.get("severity") in ("high", "critical"),
+          f"branch restructure on a safety trip scored {e.get('severity')}")
+    check(e.get("mitre", {}).get("technique_id") == "T0889", "branch restructure -> MITRE T0889 (Modify Program)")
+
     # ── 4. coil hijack ───────────────────────────────────────────────────────
     evs = run_case(signed, base_text.replace("OTE(Feedwater_Trip)", "OTE(Cooling_Pump_Stop)").encode(), base_regs)
     e = next((x for x in evs if x["type"] == "cyber.coil_hijack"), {})

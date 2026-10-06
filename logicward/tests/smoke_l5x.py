@@ -76,6 +76,17 @@ def main() -> int:
     check(l5x.structural_hash(l5x.parse(hijacked)) != base_hash,
           "coil hijack (Feedwater_Trip->Cooling_Pump_Stop) -> hash CHANGES")
 
+    # Prompt 1.1: AND vs OR branch structure must be visible in the hash --------
+    or_rung = text.replace("XIC(Plant_Running)XIO(Flame_Detected)OTE(Fuel_Trip)",
+                           "[XIC(Plant_Running),XIO(Flame_Detected)]OTE(Fuel_Trip)")
+    check(l5x.structural_hash(l5x.parse(or_rung)) != base_hash,
+          "AND->OR regrouping on the Fuel_Trip rung -> hash CHANGES (branch structure visible)")
+    check(l5x.structural_hash(l5x.parse(or_rung)) == l5x.structural_hash(l5x.parse(or_rung)),
+          "re-parsing identical OR logic -> IDENTICAL hash (deterministic tree)")
+    edited = re.sub(r'EditedDate="[^"]*"', 'EditedDate="Thu Aug 01 00:00:00 2026"', text)
+    check(l5x.structural_hash(l5x.parse(edited)) == base_hash,
+          "EditedDate-only change -> IDENTICAL hash (not a logic change)")
+
     # neutral-text lines (dashboard diff input) ------------------------------
     lines = l5x.neutral_text_lines(prog)
     check(len(lines) == 6 and "Drum_Level_LL_SP=220" in lines[0],
