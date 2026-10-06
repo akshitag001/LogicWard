@@ -47,7 +47,8 @@
   const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
   const pretty = (t) => (t || "").replace(/_/g, " ");
   const fmt = (n) => (typeof n === "number" ? (Number.isInteger(n) ? n : n.toFixed(1)) : n);
-  const jpost = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then(r => r.json());
+  const CSRF = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
+  const jpost = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": CSRF }, body: JSON.stringify(body || {}) }).then(r => r.json());
 
   // ---- theme (Vigilo light/dark, default light, persisted) ----
   (function initTheme() {

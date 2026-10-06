@@ -47,6 +47,8 @@ BASE_WEIGHTS: dict[str, int] = {
     "response.recommend_safe_state":10,
     "response.restore_baseline":    10,
     "response.operator_ack":         5,
+    "response.login":                0,
+    "response.login_failed":        20,
 }
 DEFAULT_WEIGHT = 30
 SAFETY_MULTIPLIER = 1.25

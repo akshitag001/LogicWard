@@ -20,6 +20,7 @@ import os
 import secrets
 import threading
 import time
+from datetime import timedelta
 
 from flask import (Flask, Response, jsonify, redirect, render_template, request,
                    session, url_for)
@@ -42,13 +43,25 @@ from logicward.sites import registry
 # gated by CAPABILITY (what a role may DO), not a linear rank, because the roles
 # have different scopes (a Network Engineer can quarantine a device but not touch
 # the PLC program; a Control Engineer is the reverse).
+from werkzeug.security import check_password_hash, generate_password_hash
+
+# Demo credentials (unchanged usernames/passwords) — but stored as salted PBKDF2
+# hashes, never plaintext (Prompt 2.4). The hashes are derived once at import.
+_DEMO_PASSWORDS = {
+    "operator": "operator123", "engineer": "engineer123", "netsec": "netsec123",
+    "soc": "soc123", "vendor": "vendor123", "ciso": "ciso123",
+}
+_ROLE_NAMES = {
+    "operator": ("operator",         "Operator (Control Room)"),
+    "engineer": ("control_engineer", "C&I / Control Engineer"),
+    "netsec":   ("network_engineer", "OT Network / Security Engineer"),
+    "soc":      ("soc_analyst",      "SOC Analyst"),
+    "vendor":   ("vendor",           "Vendor / OEM Contractor"),
+    "ciso":     ("ciso",             "CISO / Plant Cyber Head"),
+}
 USERS = {
-    "operator": {"password": "operator123", "role": "operator",         "name": "Operator (Control Room)"},
-    "engineer": {"password": "engineer123", "role": "control_engineer", "name": "C&I / Control Engineer"},
-    "netsec":   {"password": "netsec123",   "role": "network_engineer", "name": "OT Network / Security Engineer"},
-    "soc":      {"password": "soc123",      "role": "soc_analyst",      "name": "SOC Analyst"},
-    "vendor":   {"password": "vendor123",   "role": "vendor",           "name": "Vendor / OEM Contractor"},
-    "ciso":     {"password": "ciso123",     "role": "ciso",             "name": "CISO / Plant Cyber Head"},
+    u: {"pw_hash": generate_password_hash(pw), "role": _ROLE_NAMES[u][0], "name": _ROLE_NAMES[u][1]}
+    for u, pw in _DEMO_PASSWORDS.items()
 }
 
 # Capabilities gate every action/control (UI + API):
@@ -438,8 +451,16 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
     # engine ingest/poll blueprint shares our bus + token
     app.config["LOGICWARD_BUS"] = dash.bus
     app.config["LOGICWARD_TOKEN"] = config.INGEST_TOKEN
+    app.config["LOGICWARD_REQUIRE_SESSION"] = True   # /api/events needs a login here
     app.register_blueprint(engine_api)
     app.config["DASH"] = dash
+
+    # -- session hardening (Prompt 2.4) --
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+    )
 
     # Site B (chemical reactor): mount its 3D scene + feed + APIs on this app so
     # both plants live under one dashboard, one bus, one login.
@@ -447,15 +468,61 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
         from logicward.sites.grfics.blueprint import make_grfics_blueprint
         app.register_blueprint(make_grfics_blueprint(dash.chem))
 
+    # -- CSRF: per-session token required on browser state-changing POSTs --
+    # Machine endpoints (token-authed) are exempt; /login is form-posted pre-session.
+    CSRF_EXEMPT = {"/api/ingest", "/api/telemetry", "/login"}
+
+    @app.before_request
+    def _csrf_guard():
+        if session.get("user") in USERS and not session.get("csrf"):
+            session["csrf"] = secrets.token_hex(16)
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            if request.path in CSRF_EXEMPT or not request.path.startswith("/api/"):
+                return None
+            tok = request.headers.get("X-CSRF-Token", "")
+            if not tok or tok != session.get("csrf"):
+                return jsonify({"error": "CSRF token missing or invalid"}), 400
+        return None
+
+    @app.get("/api/csrf")
+    @login_required
+    def api_csrf():
+        return jsonify({"csrf": session.get("csrf", "")})
+
+    # in-memory login rate limiter: 5 failures / minute / IP
+    _login_fails: dict[str, list[float]] = {}
+
+    def _rate_limited(ip: str) -> bool:
+        now = time.time()
+        hits = [t for t in _login_fails.get(ip, []) if now - t < 60]
+        _login_fails[ip] = hits
+        return len(hits) >= 5
+
     # -- auth --
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if request.method == "POST":
+            ip = request.remote_addr or "?"
+            if _rate_limited(ip):
+                dash.bus.emit_new("response.login_failed", "dashboard",
+                                  {"reason": f"Login rate limit hit from {ip}", "ip": ip, "rate_limited": True},
+                                  identity={"who": ip, "channel": "operator"})
+                return render_template("login.html", error="Too many attempts — wait a minute."), 429
             u = request.form.get("username", "")
             p = request.form.get("password", "")
-            if u in USERS and USERS[u]["password"] == p:
+            if u in USERS and check_password_hash(USERS[u]["pw_hash"], p):
+                session.permanent = True
                 session["user"] = u
+                session["csrf"] = secrets.token_hex(16)
+                _login_fails.pop(ip, None)
+                dash.bus.emit_new("response.login", "dashboard",
+                                  {"reason": f"Login success: {u}", "user": u, "ip": ip},
+                                  identity={"who": u, "channel": "operator"})
                 return redirect(url_for("dashboard_page"))
+            _login_fails.setdefault(ip, []).append(time.time())
+            dash.bus.emit_new("response.login_failed", "dashboard",
+                              {"reason": f"Login failed for '{u}' from {ip}", "user": u, "ip": ip},
+                              identity={"who": ip, "channel": "operator"})
             return render_template("login.html", error="Invalid credentials"), 401
         return render_template("login.html", error=None)
 
@@ -474,7 +541,8 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
         u = session["user"]
         role = USERS[u]["role"]
         return render_template("dashboard.html", user=USERS[u]["name"], username=u,
-                               role=role, caps=",".join(sorted(caps_for(role))))
+                               role=role, caps=",".join(sorted(caps_for(role))),
+                               csrf_token=session.get("csrf", ""))
 
     # -- data APIs --
     @app.get("/api/sites")
@@ -505,7 +573,7 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
         # The Pi edge agent pushes its CPU/RAM/temp here (token-authed, same token
         # as event ingest). Kept off the event bus — this is a live gauge, not
         # evidence; sustained spikes still surface as resource.cpu_spike alerts.
-        tok = request.headers.get("X-LogicWard-Token") or request.args.get("token")
+        tok = request.headers.get("X-LogicWard-Token")   # header only (Prompt 2.4) — no ?token=
         if tok != config.INGEST_TOKEN:
             return jsonify({"error": "unauthorized"}), 401
         body = request.get_json(silent=True) or {}

@@ -33,6 +33,8 @@ def main() -> int:
     c = app.test_client()
     with c.session_transaction() as s:
         s["user"] = "soc"
+        s["csrf"] = "test-csrf"
+    _CSRF = {"X-CSRF-Token": "test-csrf"}   # browser state-changing POSTs carry this
 
     # -- 1. chemical site embedded on the shared bus --
     check("chemical Site B embedded", dash.chem is not None)
@@ -57,7 +59,7 @@ def main() -> int:
     check("Site-B state API", c.get("/api/site-b/state").status_code == 200)
 
     # -- 5. chemical attack -> unified feed, site-tagged, MITRE-mapped --
-    r = c.post("/api/site-b/attack/pressure-redline").get_json()
+    r = c.post("/api/site-b/attack/pressure-redline", headers=_CSRF).get_json()
     check("chem attack ok", r.get("ok") is True)
     time.sleep(1.2)
     ev = c.get("/api/events?since=0").get_json()["events"]

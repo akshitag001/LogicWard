@@ -26,7 +26,18 @@ def check(cond: bool, label: str) -> None:
 def login(app, user, pw):
     c = app.test_client()
     c.post("/login", data={"username": user, "password": pw})
+    try:
+        c._csrf = c.get("/api/csrf").get_json().get("csrf", "")
+    except Exception:  # noqa: BLE001
+        c._csrf = ""
     return c
+
+
+def cpost(c, url, **kw):
+    """POST with this client's CSRF token (browser state-changing request)."""
+    headers = kw.pop("headers", {}) or {}
+    headers.setdefault("X-CSRF-Token", getattr(c, "_csrf", ""))
+    return c.post(url, headers=headers, **kw)
 
 
 def main() -> int:
@@ -90,13 +101,13 @@ def main() -> int:
         pdf = soc.get("/api/evidence/report.pdf")
         check(pdf.status_code == 200 and pdf.data[:4] == b"%PDF", "SOC can export signed PDF forensic report")
 
-        ack = soc.post("/api/response/ack", json={"ref": evs[0]["event_id"]})
+        ack = cpost(soc, "/api/response/ack", json={"ref": evs[0]["event_id"]})
         check(ack.status_code == 200, "response: acknowledge action works")
 
         # -- Prompt 2.1: "Acknowledge all" must NOT destroy the evidence log --
         ev_before = [ln for ln in config.EVIDENCE_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
         api_before = len(soc.get("/api/evidence").get_json()["events"])
-        ackall = soc.post("/api/alerts/ack_all")
+        ackall = cpost(soc, "/api/alerts/ack_all")
         check(ackall.status_code == 200 and "acknowledged" in ackall.get_json(),
               "POST /api/alerts/ack_all acknowledges (no delete)")
         ev_after = [ln for ln in config.EVIDENCE_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
@@ -104,7 +115,7 @@ def main() -> int:
               f"ack_all keeps evidence log + appends 1 ack event ({len(ev_before)}->{len(ev_after)})")
         api_after = len(soc.get("/api/evidence").get_json()["events"])
         check(api_after >= api_before, f"/api/evidence still returns every event ({api_after} >= {api_before})")
-        gone = soc.post("/api/alerts/clear")
+        gone = cpost(soc, "/api/alerts/clear")
         check(gone.status_code == 410, f"legacy /api/alerts/clear returns 410 Gone (got {gone.status_code})")
         acked_state = soc.get("/api/alerts/acked").get_json()
         check(evs[0]["event_id"] in acked_state["acked"], "single-acked event id is tracked server-side")
@@ -112,10 +123,26 @@ def main() -> int:
         # RBAC negatives
         op = login(app, "operator", "operator123")
         check(op.get("/api/evidence/report.pdf").status_code == 403, "operator CANNOT export PDF (403)")
-        check(op.post("/api/baseline/lock").status_code == 403, "operator CANNOT re-lock baseline (403)")
+        check(cpost(op, "/api/baseline/lock").status_code == 403, "operator CANNOT re-lock baseline (403)")
 
         eng = login(app, "engineer", "engineer123")
-        check(eng.post("/api/baseline/lock").status_code == 200, "engineer CAN re-lock baseline")
+        check(cpost(eng, "/api/baseline/lock").status_code == 200, "engineer CAN re-lock baseline")
+
+        # -- Prompt 2.4: auth + CSRF + login rate limiting --
+        check(anon.get("/api/events").status_code == 401, "/api/events without login -> 401")
+        check(app.test_client().get("/health").get_json() == {"status": "ok"},
+              "/health is public but leaks no cursor")
+        check(soc.post("/api/response/ack", json={"ref": "x"}).status_code == 400,
+              "state-changing POST without CSRF token -> 400")
+        check(cpost(soc, "/api/response/ack", json={"ref": "x"}).status_code == 200,
+              "same POST WITH CSRF token -> 200")
+        check(app.test_client().post("/api/telemetry", json={"cpu": 1},
+              query_string={"token": config.INGEST_TOKEN}).status_code == 401,
+              "telemetry token via ?query= is rejected (header only)")
+        rl = app.test_client()
+        codes = [rl.post("/login", data={"username": "soc", "password": "wrong"}).status_code
+                 for _ in range(6)]
+        check(codes[-1] == 429, f"6 bad logins from one IP -> 429 rate limited ({codes})")
     finally:
         dash.stop()
 
@@ -158,9 +185,9 @@ def tamper_test() -> None:
         # re-lock on an invalid baseline needs a typed confirmation
         app2 = create_app(dashboard=dash2)
         eng = login(app2, "engineer", "engineer123")
-        check(eng.post("/api/baseline/lock").status_code == 428,
+        check(cpost(eng, "/api/baseline/lock").status_code == 428,
               "re-lock on invalid baseline without confirm -> 428")
-        ok = eng.post("/api/baseline/lock", json={"confirm": "RELOCK"})
+        ok = cpost(eng, "/api/baseline/lock", json={"confirm": "RELOCK"})
         check(ok.status_code == 200 and dash2.baseline_state == "VALID",
               "engineer re-locks with confirm='RELOCK' -> baseline VALID again")
     finally:

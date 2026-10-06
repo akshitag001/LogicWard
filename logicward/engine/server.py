@@ -11,7 +11,7 @@ runnable standalone (`python -m logicward.engine.server`) for the bus smoke test
 """
 from __future__ import annotations
 
-from flask import Blueprint, Flask, current_app, jsonify, request
+from flask import Blueprint, Flask, current_app, jsonify, request, session
 
 from logicward import config
 from logicward.engine.events import EventBus, validate_event
@@ -57,6 +57,10 @@ def ingest():
 
 @api.get("/api/events")
 def events():
+    # When mounted on the dashboard, event polling requires a logged-in session
+    # (Prompt 2.4). The standalone ingest server leaves this flag unset.
+    if current_app.config.get("LOGICWARD_REQUIRE_SESSION") and not session.get("user"):
+        return jsonify({"error": "authentication required"}), 401
     since = request.args.get("since", default=0, type=int)
     evs, cursor = _bus().get_since(since)
     return jsonify({"events": evs, "cursor": cursor})
@@ -64,7 +68,8 @@ def events():
 
 @api.get("/health")
 def health():
-    return jsonify({"status": "ok", "cursor": _bus().latest_seq})
+    # Public liveness only — no internal cursor leaked.
+    return jsonify({"status": "ok"})
 
 
 def create_app(bus: EventBus | None = None, token: str | None = None) -> Flask:
