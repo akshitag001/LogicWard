@@ -4,7 +4,7 @@ Everything you need to install, run, demo, and deploy LogicWard — the live OT
 drift-detection appliance for a simulated thermal power plant.
 
 > Design & architecture: **[DESIGN.md](DESIGN.md)** · shareable **[LogicWard_Design.pdf](LogicWard_Design.pdf)** · presenter **[LogicWard_Demo_Guide.pdf](LogicWard_Demo_Guide.pdf)**
-> Repo: **https://github.com/positromen/Adani-Project-OT**
+> Repo: **https://github.com/<your-org>/logicward**
 >
 > **Status:** built and passing 98/98 automated checks across 7 suites, **and verified end-to-end on real hardware** (Raspberry Pi 4 PLC ↔ laptop SOC over Wi-Fi).
 
@@ -50,8 +50,8 @@ You can run the whole thing **on one machine** (an embedded plant — no Pi need
 - A modern browser for the dashboard.
 
 ```bash
-git clone https://github.com/positromen/Adani-Project-OT.git
-cd Adani-Project-OT
+git clone https://github.com/<your-org>/logicward.git
+cd logicward
 python -m venv .venv
 
 # activate the venv:
@@ -217,13 +217,13 @@ Get the project onto the Pi, then bootstrap (venv + deps incl. scapy/gpiozero, w
 the ingest URL). Pass the **laptop's** LAN IP (find it with `ipconfig`):
 ```bash
 # If the repo is PUBLIC:
-git clone https://github.com/positromen/Adani-Project-OT.git && cd Adani-Project-OT
+git clone https://github.com/<your-org>/logicward.git && cd logicward
 
 # If the repo is PRIVATE (the Pi can't clone it) — copy the tree from the laptop instead.
 # Run this ON THE LAPTOP from the project folder:
 #   tar czf - --exclude=.git --exclude=logicward/data --exclude=.venv logicward deploy requirements.txt \
-#     | ssh <plc-host>@<plc-host>.local "mkdir -p ~/Adani-Project-OT && tar xzf - -C ~/Adani-Project-OT"
-# then back on the Pi:  cd ~/Adani-Project-OT
+#     | ssh <plc-host>@<plc-host>.local "mkdir -p ~/logicward && tar xzf - -C ~/logicward"
+# then back on the Pi:  cd ~/logicward
 
 bash deploy/pi_bootstrap.sh 10.119.190.79        # <- your laptop's IP
 bash deploy/run_pi.sh                             # PLC :5020 + program :8081 + agent (wlan0)
