@@ -69,8 +69,10 @@ def download_program():
         xml = request.get_data()
     if not xml:
         return jsonify({"error": "empty program"}), 400
+    if len(xml) > 5 * 1024 * 1024:                  # reject oversized uploads (Prompt 3.4)
+        return jsonify({"error": "program too large (max 5 MB)"}), 413
     try:
-        summary = _summary(xml)                     # validates it parses
+        summary = _summary(xml)                     # validates it parses (hardened XML parser)
     except Exception as exc:                        # noqa: BLE001 - reject malformed
         return jsonify({"error": f"invalid L5X: {exc}"}), 400
     _live_path().write_bytes(xml)                   # FIM will observe this write

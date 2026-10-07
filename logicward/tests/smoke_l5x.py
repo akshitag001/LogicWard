@@ -94,6 +94,18 @@ def main() -> int:
     check(len(lines) == 6 and "Drum_Level_LL_SP=220" in lines[0],
           "neutral_text_lines inlines referenced setpoint for the visual diff")
 
+    # Prompt 3.4: external entities in an untrusted L5X must NOT be resolved -----
+    xxe = ("""<?xml version="1.0"?>
+<!DOCTYPE t [<!ENTITY x SYSTEM "file:///etc/passwd">]>
+"""
+           """<RSLogix5000Content><Controller Name="P&x;"><Programs/></Controller></RSLogix5000Content>""")
+    try:
+        prog_xxe = l5x.parse(xxe)
+        check("&x;" not in (prog_xxe.controller or "") and "root:" not in (prog_xxe.controller or ""),
+              "external entity is NOT resolved (XXE-safe parser)")
+    except Exception:
+        check(True, "external entity rejected/ignored (XXE-safe parser)")
+
     passed = sum(1 for ok, _ in _checks if ok)
     total = len(_checks)
     print(f"\n{'='*52}\n  RESULT: {passed}/{total} checks passed\n{'='*52}")

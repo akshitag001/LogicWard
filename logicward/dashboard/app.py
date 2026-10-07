@@ -36,6 +36,7 @@ from logicward.agent.sensors.fim_watch import BaselineFileMonitor
 from logicward.agent.sensors.resource import ResourceMonitor
 from logicward.dashboard import evidence as evidence_mod
 from logicward.engine import baseline as bl
+from logicward.engine import events as events_mod
 from logicward.engine import l5x, l5x_diff
 from logicward.engine.drift import DriftEngine
 from logicward.engine.events import EventBus
@@ -326,13 +327,25 @@ class Dashboard:
             try:
                 if self.baseline_state != "INVALID":   # fail closed: no detection on a tampered baseline
                     self.drift.run_once()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                self._report_loop_error("drift", exc)
             try:
                 self._resmon.scan()          # edge-fire cpu/mem spike on sustained load
+            except Exception as exc:  # noqa: BLE001
+                self._report_loop_error("resource", exc)
+            self._stop.wait(config.POLL_INTERVAL_SEC)
+
+    def _report_loop_error(self, component: str, exc: Exception) -> None:
+        """A crashed detector must be VISIBLE, not silently swallowed (Prompt 3.4)."""
+        key = f"loop:{component}:{type(exc).__name__}"
+        if events_mod.throttled_warn(key, f"{component} loop error: {type(exc).__name__}: {exc}"):
+            try:
+                self.bus.emit_new("system.detector_error", "dashboard", {
+                    "component": component, "error": f"{type(exc).__name__}: {exc}",
+                    "reason": f"{component} detector raised {type(exc).__name__} — see logs",
+                }, identity={"who": "system", "channel": "host"})
             except Exception:  # noqa: BLE001
                 pass
-            self._stop.wait(config.POLL_INTERVAL_SEC)
 
     def telemetry(self) -> dict:
         """Live host telemetry for the thermal Live-Plant panel. Agent-pushed Pi

@@ -119,6 +119,18 @@ def main() -> int:
     finally:
         srv.shutdown()
 
+    # Prompt 3.4: now_iso millisecond format + bounded dedup memory ----------
+    import re as _re
+
+    from logicward.engine.events import now_iso
+    check(bool(_re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$", now_iso())),
+          "now_iso() is single-sampled millisecond UTC (….NNNZ)")
+    small = EventBus(history_max=5)            # _seen_max = max(1000, 50)=1000
+    for i in range(1200):
+        small.emit(new_event("resource.cpu_spike", "x", {"i": i}, event_id=f"id-{i}"))
+    check(len(small._seen_ids) <= small._seen_max,
+          f"_seen_ids is bounded ({len(small._seen_ids)} <= {small._seen_max})")
+
     passed = sum(1 for ok, _ in _checks if ok)
     total = len(_checks)
     print(f"\n{'='*52}\n  RESULT: {passed}/{total} checks passed\n{'='*52}")

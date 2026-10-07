@@ -23,6 +23,14 @@ from pathlib import Path
 
 from lxml import etree
 
+#: Hardened parser for UNTRUSTED L5X (arrives via POST /program/download):
+#: no external entity resolution, no network, no billion-laughs huge trees.
+_SAFE_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+
+
+def _safe_fromstring(xml: bytes):
+    return etree.fromstring(xml, parser=_SAFE_PARSER)
+
 # ── Ladder instruction taxonomy (Rockwell mnemonics) ──────────────────────────
 CONTACTS = {"XIC", "XIO"}                       # examine-if-closed / -open
 COMPARES = {"GRT", "LES", "GEQ", "LEQ", "EQU", "NEQ", "LIM"}
@@ -265,7 +273,7 @@ def parse(xml: bytes | str, safety_tags: list[str] | None = None) -> L5XProgram:
         safety_tags = load_safety_tags()
     if isinstance(xml, str):
         xml = xml.encode("utf-8")
-    root = etree.fromstring(xml)
+    root = _safe_fromstring(xml)
     controller = root.find("Controller")
     if controller is None:
         raise ValueError("not a valid L5X: no <Controller> element")
@@ -411,7 +419,7 @@ def strip_volatile_xml(xml: bytes | str) -> bytes:
     """
     if isinstance(xml, str):
         xml = xml.encode("utf-8")
-    root = etree.fromstring(xml)
+    root = _safe_fromstring(xml)
     for el in root.iter():
         for attr in list(el.attrib):
             if attr in VOLATILE_ATTRS:

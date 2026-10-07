@@ -13,9 +13,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import threading
+import time
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +29,20 @@ from logicward.engine.classify import classify_drift
 # ── The Event contract ────────────────────────────────────────────────────────
 
 SEVERITY_LEVELS = ("info", "low", "medium", "high", "critical")
+
+_log = logging.getLogger("logicward")
+_throttle: dict[str, float] = {}
+
+
+def throttled_warn(key: str, msg: str, period: float = 60.0) -> bool:
+    """Log a warning at most once per `period` seconds per distinct `key`.
+    Returns True when it actually logged (so callers can act on first occurrence)."""
+    now = time.time()
+    if now - _throttle.get(key, 0.0) < period:
+        return False
+    _throttle[key] = now
+    _log.warning(msg)
+    return True
 
 #: Base severity weight per event type. All tuning lives here (DESIGN.md §4.3).
 BASE_WEIGHTS: dict[str, int] = {
@@ -57,15 +73,18 @@ BASE_WEIGHTS: dict[str, int] = {
     "response.operator_ack":         5,
     "response.login":                0,
     "response.login_failed":        20,
+    "system.detector_error":         0,
 }
 DEFAULT_WEIGHT = 30
 SAFETY_MULTIPLIER = 1.25
 
 
 def now_iso() -> str:
-    """UTC timestamp, millisecond precision, e.g. 2026-07-27T18:22:04.517Z."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + \
-        f"{datetime.now(timezone.utc).microsecond // 1000:03d}Z"
+    """UTC timestamp, millisecond precision, e.g. 2026-07-27T18:22:04.517Z.
+
+    Sampled ONCE (Prompt 3.4): the old two-call form could take the seconds and
+    the milliseconds from different instants."""
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def compute_severity(event_type: str, details: dict) -> str:
@@ -280,7 +299,9 @@ class EventBus:
         self._history: deque[dict] = deque(maxlen=history_max)
         self._subscribers: list[Callable[[dict], None]] = []
         self._seq = 0
-        self._seen_ids: set[str] = set()
+        # bounded dedup memory (Prompt 3.4): never grows unbounded while history is capped
+        self._seen_ids: OrderedDict[str, None] = OrderedDict()
+        self._seen_max = max(1000, history_max * 10)
         self.evidence = EvidenceLog(evidence_path) if evidence_path else None
         self._mitre = mitre_mapper or mitre_map.map_event
 
@@ -303,7 +324,9 @@ class EventBus:
             self._seq += 1
             enriched = self._enrich(event, self._seq)
             if eid:
-                self._seen_ids.add(eid)
+                self._seen_ids[eid] = None
+                while len(self._seen_ids) > self._seen_max:
+                    self._seen_ids.popitem(last=False)
             self._history.append(enriched)
             if self.evidence:
                 self.evidence.append(enriched)
@@ -312,8 +335,9 @@ class EventBus:
         for callback in subscribers:
             try:
                 callback(enriched)
-            except Exception:  # a bad subscriber must not break the bus
-                pass
+            except Exception as exc:  # a bad subscriber must not break the bus
+                throttled_warn(f"subscriber:{type(exc).__name__}",
+                               f"event-bus subscriber raised {type(exc).__name__}: {exc}")
         return enriched
 
     def clear(self) -> None:
