@@ -4,7 +4,7 @@ import time
 client = paramiko.SSHClient()
 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 print("Connecting to Pi to restart services...")
-client.connect('10.119.190.53', username='<plc-host>', password='123456789')
+client.connect('10.0.0.50', username='<plc-host>', password=os.environ.get('PI_PASSWORD',''))
 
 # 1. Kill any existing LogicWard python processes
 print("Killing stuck processes...")

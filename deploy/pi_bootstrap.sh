@@ -3,7 +3,7 @@
 # LogicWard — Raspberry Pi first-time bootstrap.
 # Run ONCE on the Pi after cloning the repo.
 #
-#   git clone https://github.com/positromen/Adani-Project.git
+#   git clone https://github.com/<your-org>/logicward.git
 #   cd Adani-Project
 #   bash deploy/pi_bootstrap.sh <LAPTOP_LAN_IP>
 #

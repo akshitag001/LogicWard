@@ -10,7 +10,7 @@ def main():
     args = p.parse_args()
 
     PI_USER = os.environ.get("PI_USERNAME", "<plc-host>")
-    PI_PASS = os.environ.get("PI_PASSWORD", "123456789")
+    PI_PASS = os.environ.get("PI_PASSWORD", "")
 
     print(f"Connecting to Pi at {args.pi_ip}...")
     client = paramiko.SSHClient()

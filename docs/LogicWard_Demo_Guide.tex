@@ -93,7 +93,7 @@ A full run produces \textbf{14 events --- 4 critical, 2 high, 3 medium, 5 low}.
 \end{note}
 
 \vfill
-{\small\color{muted} Repo: https://github.com/positromen/Adani-Project-OT \quad\textbullet\quad
+{\small\color{muted} Repo: https://github.com/<your-org>/logicward \quad\textbullet\quad
 See also USAGE.md (full how-to) and DESIGN.md / LogicWard\_Design.pdf (architecture).}
 \end{titlepage}
 
@@ -165,8 +165,8 @@ detection (laptop$\rightarrow$Pi Modbus + program pull) and agent event-forwardi
 (Pi$\rightarrow$laptop ingest) both confirmed. Full runbook in \textbf{USAGE.md \S7}. In short:
 \begin{lstlisting}
 # On the Pi:      bash deploy/pi_bootstrap.sh <laptop-ip>   &&   bash deploy/run_pi.sh
-# On the laptop:  .\deploy\run_laptop.ps1 -PiHost siddhesh.local
-# From attacker:  python -m logicward.attacker.attacks --host siddhesh.local logic-inversion
+# On the laptop:  .\deploy\run_laptop.ps1 -PiHost <plc-host>.local
+# From attacker:  python -m logicward.attacker.attacks --host <plc-host>.local logic-inversion
 \end{lstlisting}
 \begin{note}
 \textbf{Campus Wi-Fi tip (learned live):} enterprise networks often enable client isolation

@@ -187,8 +187,8 @@ Each program-download mutation also trips the passive FIM sensor
 Examples:
 ```bash
 python -m logicward.attacker.attacks --host <plc-host>.local logic-inversion
-python -m logicward.attacker.attacks --host 10.119.190.53 --modbus-port 5020 force-coil
-python -m logicward.attacker.attacks --host 10.119.190.53 ddos --count 1000
+python -m logicward.attacker.attacks --host 10.0.0.50 --modbus-port 5020 force-coil
+python -m logicward.attacker.attacks --host 10.0.0.50 ddos --count 1000
 ```
 
 ---
@@ -225,7 +225,7 @@ git clone https://github.com/<your-org>/logicward.git && cd logicward
 #     | ssh <plc-host>@<plc-host>.local "mkdir -p ~/logicward && tar xzf - -C ~/logicward"
 # then back on the Pi:  cd ~/logicward
 
-bash deploy/pi_bootstrap.sh 10.119.190.79        # <- your laptop's IP
+bash deploy/pi_bootstrap.sh 10.0.0.10        # <- your laptop's IP
 bash deploy/run_pi.sh                             # PLC :5020 + program :8081 + agent (wlan0)
 #   SUDO_AGENT=1 bash deploy/run_pi.sh            # run agent as root for a live ARP sweep
 ```
@@ -242,7 +242,7 @@ netsh advfirewall firewall add rule name="LogicWard" dir=in action=allow protoco
 Start the dashboard in **remote** mode (reads the real Pi):
 ```powershell
 .\deploy\run_laptop.ps1 -PiHost <plc-host>.local
-# or by IP:  .\deploy\run_laptop.ps1 -PiHost 10.119.190.53
+# or by IP:  .\deploy\run_laptop.ps1 -PiHost 10.0.0.50
 ```
 Open **http://localhost:8080/** (login `soc/soc123`). The Live Plant now reflects the
 Pi's real Modbus registers; the Pi agent's physical/resource/FIM events stream in.

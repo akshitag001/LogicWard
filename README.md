@@ -184,3 +184,23 @@ PLC host (edge agent + Modbus server), with the engine + dashboard on a laptop. 
 ## Credits & license
 
 Built for the Adani OT Cybersecurity Hackathon 2026. Licensed under the [MIT License](LICENSE).
+
+## Recognition & what this project taught me
+
+<div align="center">
+
+<img src="docs/assets/award-cyber-sanjeevni.jpg" alt="Team receiving the Runner Up 1 award at Adani Innovation Mindstorm 2026–2027, Cyber Sanjeevni" width="640">
+
+<sub><b>Adani Innovation Mindstorm 2026–2027 · Cyber Sanjeevni — Runner Up 1</b><br>
+Rashtriya Raksha University · ₹3,00,000</sub>
+
+</div>
+
+Building LogicWard taught me:
+
+- **How OT security differs from IT security.** Modbus has no authentication, and PLCs rarely log program changes, so you have to detect changes to the logic itself instead of waiting for login events.
+- **Reading ladder logic as data.** Parsing Rockwell L5X into an AND/OR logic tree and diffing it rung by rung showed me how one flipped comparator can quietly disable a safety trip.
+- **Making evidence hold up.** HMAC-signed baselines, a hash-chained evidence log, and signed PDF reports showed me the difference between detecting an attack and proving it happened.
+- **Mapping detections to MITRE ATT&CK for ICS**, so every alert tells an analyst which technique they are looking at.
+- **Thinking like both sides.** Writing the red-team attack catalogue made the detection engine better, because every attack became a test case.
+- **Shipping as a team under hackathon pressure:** scoping the work, building a demo that tells a story, and presenting it to judges.
