@@ -22,7 +22,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 SUITES = [
     "bus", "l5x", "plant", "drift", "agent",
-    "dashboard", "attacker", "grfics", "multisite", "classify",
+    "dashboard", "attacker", "grfics", "multisite", "classify", "evidence",
 ]
 
 

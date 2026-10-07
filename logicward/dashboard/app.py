@@ -348,6 +348,11 @@ class Dashboard:
 
     def stop(self) -> None:
         self._stop.set()
+        if self.bus.evidence is not None:
+            try:
+                self.bus.evidence.checkpoint()
+            except Exception:  # noqa: BLE001
+                pass
         self.baseline_fim.stop()
         if hasattr(self.plant, "stop"):
             self.plant.stop()
@@ -360,6 +365,7 @@ class Dashboard:
         counts = evidence_mod.summary(events)
         live = l5x.parse(self.plant.program_source())
         diff = l5x_diff.diff_programs(self.baseline_prog, live)
+        chain_ok, chain_bad = (self.bus.evidence.verify() if self.bus.evidence else (True, None))
         integrity = "VALID" if bl.verify(self.signed) else "TAMPERED"
         if self.baseline_state == "INVALID":
             integrity = "TAMPERED"
@@ -368,6 +374,8 @@ class Dashboard:
             "controller": self.signed["manifest"]["controller"],
             "baseline_hash": self.signed["manifest"]["structural_hash"],
             "baseline_integrity": integrity,
+            "evidence_chain": "VERIFIED" if chain_ok else f"BROKEN at line {chain_bad}",
+            "evidence_chain_ok": chain_ok,
             "baseline_state": self.baseline_state,
             "baseline_invalid": self.baseline_state == "INVALID",
             "detection_paused": self.baseline_state == "INVALID",
@@ -596,8 +604,11 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
     def api_evidence():
         sev = request.args.get("severity")
         site = request.args.get("site")
+        chain_ok, chain_bad = (dash.bus.evidence.verify() if dash.bus.evidence else (True, None))
         return jsonify({"events": evidence_mod.query(dash.bus.snapshot(), severity=sev,
-                                                     site=site, limit=300)})
+                                                     site=site, limit=300),
+                        "chain": {"ok": chain_ok, "bad_line": chain_bad,
+                                  "status": "VERIFIED" if chain_ok else f"BROKEN at line {chain_bad}"}})
 
     @app.post("/api/alerts/ack_all")
     @require_cap("ack_all")

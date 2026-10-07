@@ -10,6 +10,8 @@ See DESIGN.md §3–§4 for the full specification.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import threading
 import uuid
@@ -18,6 +20,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
+from logicward import config
 from logicward.engine import mitre_map
 from logicward.engine.classify import classify_drift
 
@@ -142,19 +145,111 @@ def validate_event(ev: object) -> list[str]:
 
 # ── Evidence log (append-only sink) ───────────────────────────────────────────
 
+GENESIS = "GENESIS"
+CHECKPOINT_EVERY = 50
+
+
+def _entry_hash(prev_hash: str, payload: dict) -> str:
+    """sha256(prev_hash + canonical JSON of the line WITHOUT its entry_hash)."""
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256((prev_hash + body).encode("utf-8")).hexdigest()
+
+
+def _chain_hmac(entry_hash: str) -> str:
+    return "hmac-sha256:" + hmac.new(config.HMAC_KEY.encode("utf-8"),
+                                     entry_hash.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def verify_chain(path: str | Path) -> tuple[bool, int | None]:
+    """Verify the hash chain. Returns (ok, first_bad_line) — 1-indexed line number
+    of the first tampered/broken entry, or None when the whole chain is intact."""
+    p = Path(path)
+    if not p.exists():
+        return True, None
+    prev = GENESIS
+    for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), start=1):
+        if not ln.strip():
+            continue
+        try:
+            rec = json.loads(ln)
+        except ValueError:
+            return False, i
+        stored = rec.get("entry_hash")
+        if rec.get("prev_hash") != prev or not stored:
+            return False, i
+        payload = {k: v for k, v in rec.items() if k not in ("entry_hash", "hmac")}
+        if _entry_hash(prev, payload) != stored:
+            return False, i
+        if rec.get("checkpoint") and rec.get("hmac") != _chain_hmac(stored):
+            return False, i
+        prev = stored
+    return True, None
+
+
 class EvidenceLog:
-    """Thread-safe append-only JSONL store — the forensic record (who/when/what)."""
+    """Thread-safe, append-only, HASH-CHAINED JSONL store (Prompt 3.1).
+
+    Each line carries prev_hash + entry_hash; every CHECKPOINT_EVERY entries (and on
+    close) an HMAC-signed checkpoint pins the chain head, so a tampered line is
+    detectable and the head cannot be silently recomputed without the key."""
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        self._head = GENESIS
+        self._since_checkpoint = 0
+        self._resume_head()
+
+    def _resume_head(self) -> None:
+        if not self.path.exists():
+            return
+        last = None
+        for ln in self.path.read_text(encoding="utf-8").splitlines():
+            if ln.strip():
+                last = ln
+        if last:
+            try:
+                self._head = json.loads(last).get("entry_hash") or GENESIS
+            except ValueError:
+                self._head = GENESIS
+
+    def _write_record(self, record: dict) -> dict:
+        record["prev_hash"] = self._head
+        record["entry_hash"] = _entry_hash(self._head, record)
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        self._head = record["entry_hash"]
+        return record
 
     def append(self, event: dict) -> None:
-        line = json.dumps(event, ensure_ascii=False)
         with self._lock:
-            with open(self.path, "a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
+            self._write_record(dict(event))
+            self._since_checkpoint += 1
+            if self._since_checkpoint >= CHECKPOINT_EVERY:
+                self._checkpoint_locked()
+
+    def _checkpoint_locked(self) -> None:
+        rec = self._write_record({"checkpoint": True, "type": "evidence.checkpoint",
+                                  "timestamp": now_iso()})
+        rec["hmac"] = _chain_hmac(rec["entry_hash"])     # sign the chain head
+        self._rewrite_last(rec)
+        self._since_checkpoint = 0
+
+    def _rewrite_last(self, rec: dict) -> None:
+        lines = self.path.read_text(encoding="utf-8").splitlines()
+        lines[-1] = json.dumps(rec, ensure_ascii=False)
+        self.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def checkpoint(self) -> None:
+        """Write a signed checkpoint now (e.g. on shutdown)."""
+        with self._lock:
+            if self._since_checkpoint:
+                self._checkpoint_locked()
+
+    def verify(self) -> tuple[bool, int | None]:
+        with self._lock:
+            return verify_chain(self.path)
 
     def read_all(self) -> list[dict]:
         if not self.path.exists():
@@ -169,6 +264,8 @@ class EvidenceLog:
         with self._lock:
             if self.path.exists():
                 self.path.write_text("", encoding="utf-8")
+            self._head = GENESIS
+            self._since_checkpoint = 0
 
 
 # ── The bus ───────────────────────────────────────────────────────────────────

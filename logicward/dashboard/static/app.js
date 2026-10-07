@@ -266,6 +266,9 @@
       const sp = $("#side-integrity");
       if (sp) { sp.textContent = o.baseline_integrity; sp.className = "pill " + (o.baseline_integrity === "VALID" ? "ok" : "bad"); }
       renderBaselineBanner(o);
+      const cb = $("#chain-badge");
+      if (cb && o.evidence_chain) { cb.textContent = "Evidence chain: " + o.evidence_chain;
+        cb.className = "pill " + (o.evidence_chain_ok ? "ok" : "bad"); }
       updateThreatHealth();
       renderOverviewCards();
     }).catch(() => {});
