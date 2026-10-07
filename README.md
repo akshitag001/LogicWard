@@ -4,7 +4,7 @@
 
 ### Detect unauthorized PLC logic changes before they become physical incidents.
 
-[![CI](https://github.com/MUDIT/logicward/actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+[![CI](https://github.com/akshitag001/LogicWard/actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![MITRE ATT&CK for ICS](https://img.shields.io/badge/MITRE-ATT%26CK%20for%20ICS-red)
