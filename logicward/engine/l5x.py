@@ -11,6 +11,15 @@ OTE(Feedwater_Trip);``) is tokenized into instruction/operand structs so the
 drift engine can name the six mutation classes rather than just "something changed".
 
 The program is DATA — it is parsed and compared, never executed.
+
+
+Example
+-------
+A series rung is AND; a ``[ … ]`` branch is OR (Prompt 1.1):
+
+>>> from logicward.engine.l5x import build_logic_tree
+>>> build_logic_tree("XIC(Plant_Running)[LES(Drum_Level,Drum_Level_LL_SP)]OTE(Feedwater_Trip);")[0]
+['AND', [['I', 'XIC', ['Plant_Running']], ['OR', [['AND', [['I', 'LES', ['Drum_Level', 'Drum_Level_LL_SP']]]]]]]]
 """
 from __future__ import annotations
 

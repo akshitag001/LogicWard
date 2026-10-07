@@ -12,6 +12,16 @@ It does NOT interpret the L5X rungs — that program is data the detection engin
 diffs, never something executed here.
 
 Run:  python -m logicward.plant.modbus_server   [port]
+
+
+Example
+-------
+>>> from logicward.plant.modbus_server import ThermalDataStore
+>>> ds = ThermalDataStore()
+>>> ds.coil("Plant_Running")          # seeded running
+True
+>>> ds.hr("Drum_Level_LL_SP")         # low-low trip setpoint (raw)
+220
 """
 from __future__ import annotations
 

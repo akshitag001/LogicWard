@@ -37,6 +37,9 @@ jobs:
       - name: Pytest (every smoke suite, isolated subprocesses)
         run: pytest -q
 
+      - name: Doctests (module examples)
+        run: pytest --doctest-modules logicward/engine -q
+
       - name: Coverage report
         if: always()
         shell: bash

@@ -36,3 +36,4 @@ deploy/*.env
 # OS / editor
 .DS_Store
 Thumbs.db
+docs/screenshots/_video/

@@ -7,6 +7,15 @@ fans out to three sinks: the append-only evidence log, the dashboard poll buffer
 and any live subscribers.
 
 See DESIGN.md §3–§4 for the full specification.
+
+
+Example
+-------
+>>> from logicward.engine.events import compute_severity
+>>> compute_severity("cyber.condition_stripping", {"safety_critical": True})
+'critical'
+>>> compute_severity("cyber.register_change", {})
+'low'
 """
 from __future__ import annotations
 

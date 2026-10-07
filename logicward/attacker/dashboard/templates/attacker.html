@@ -66,10 +66,10 @@
   {% endmacro %}
 
   <main class="container">
-    <!-- Thermal Power Plant (Raspberry Pi) -->
+    <!-- Thermal Power Plant (PLC host, simulated) -->
     <section class="section">
       <h2 class="section-title"><span class="section-icon">⚡</span> Thermal Power Plant
-        <span class="target-sub">Raspberry Pi · {{ target_host }}:{{ modbus_port }}</span></h2>
+        <span class="target-sub">PLC host (simulated) · {{ target_host }}:{{ modbus_port }}</span></h2>
       <div class="card-grid">
         {% for atk in attacks %}{{ attack_card(atk, 'thermal') }}{% endfor %}
       </div>

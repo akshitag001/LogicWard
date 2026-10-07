@@ -263,7 +263,7 @@ class Dashboard:
         ThermalPlant_baseline.L5X; =live captures whatever the PLC is running now."""
         src = source or os.environ.get("LOGICWARD_BASELINE_SOURCE", "file")
         from logicward.plant.logic_store import BASELINE_PATH as SHIPPED_BASELINE
-        if src == "file" and SHIPPED_BASELINE.exists():
+        if src in ("file", "initial") and SHIPPED_BASELINE.exists():
             program_xml = SHIPPED_BASELINE.read_bytes()
         else:
             program_xml = self.plant.program_source()

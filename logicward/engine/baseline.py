@@ -8,6 +8,16 @@ watches this file and re-verifies on change).
 
 Honest framing: HMAC detects tamper-without-the-key; it is integrity, not access
 control. Appropriate and defensible for the appliance's evidence integrity story.
+
+
+Example
+-------
+>>> from logicward.engine import baseline as bl
+>>> signed = bl.capture('<RSLogix5000Content><Controller Name="C"><Tags/><Programs/></Controller></RSLogix5000Content>')
+>>> bl.verify(signed)
+True
+>>> bl.verify({**signed, "signature": "hmac-sha256:deadbeef"})
+False
 """
 from __future__ import annotations
 

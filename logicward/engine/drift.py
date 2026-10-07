@@ -16,6 +16,24 @@ is trivially testable and works the same against the real Pi or an in-memory
 plant. Emissions go through the event bus; the bus computes severity + MITRE.
 
 Detection is a DIFF — the rungs are never executed.
+
+
+Pipeline (Prompt 5.3)::
+
+    live L5X ──▶ canonicalize ──▶ align rungs ──▶ classify mutation ──▶ bus
+    (program_source)   (l5x.py)     (by content)    (6 named classes)   (events.py)
+
+Example
+-------
+A drum-level trip whose comparator is inverted (``LES`` → ``GRT``) is reported
+once as ``cyber.logic_inversion`` with the exact operator change in details, e.g.::
+
+    {"type": "cyber.logic_inversion",
+     "details": {"rung_id": "SafetyInterlocks/Rung0",
+                 "baseline": "LES(Drum_Level,Drum_Level_LL_SP)",
+                 "current":  "GRT(Drum_Level,Drum_Level_LL_SP)",
+                 "safety_critical": true},
+     "severity": "high", "mitre": {"technique_id": "T0889"}}
 """
 from __future__ import annotations
 

@@ -20,6 +20,15 @@ IP to tell the classes apart.
 
 Returned as (category, reason); the reason is the plain-English "why" shown in
 the expanded log detail.
+
+
+Example
+-------
+>>> from logicward.engine.classify import classify_drift
+>>> classify_drift("cyber.logic_inversion", {}, {"channel": "program-download"})[0]
+'internal'
+>>> classify_drift("cyber.register_change", {"coil": "Fuel_Valve_Open"}, {"channel": "modbus-write"})[0]
+'external'
 """
 from __future__ import annotations
 
