@@ -87,6 +87,17 @@ def main() -> int:
         srv.shutdown()
         dash.stop()
 
+    # ── Prompt 2.5: offensive tooling lives in the red-team console, scoped ──
+    from logicward.attacker.terminal import check_targets, run_scoped
+    check(check_targets(["--host", "8.8.8.8", "logic-inversion"]) is not None,
+          "2.5: run_scoped rejects --host 8.8.8.8 (off the lab allow-list)")
+    check(check_targets(["--host", "127.0.0.1", "--modbus-port", "5020", "logic-inversion"]) is None,
+          "2.5: run_scoped allows the lab PLC host + known port")
+    ok, out = run_scoped("python -m logicward.attacker.attacks --host 8.8.8.8 ddos")
+    check(ok is False and "not an allowed" in out, "2.5: scoped runner blocks an off-list target end-to-end")
+    check(check_targets(["--host", "127.0.0.1", "--modbus-port", "9999", "ddos"]) is not None,
+          "2.5: run_scoped rejects an unknown port")
+
     passed = sum(1 for ok, _ in _checks if ok)
     total = len(_checks)
     print(f"\n{'='*52}\n  RESULT: {passed}/{total} checks passed\n{'='*52}")

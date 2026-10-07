@@ -20,7 +20,6 @@
       <a class="nav-item active" data-tab="overview">Overview</a>
       <a class="nav-item" data-tab="plant">Live Plant</a>
       <a class="nav-item" data-tab="diff">Program Diff</a>
-      <a class="nav-item" data-tab="insider">Insider</a>
       <a class="nav-item" data-tab="alerts">Alerts <span id="alert-badge" class="badge">0</span></a>
       <a class="nav-item" data-tab="roles">Roles &amp; Access</a>
       <a class="nav-item" data-tab="evidence">Evidence</a>
@@ -292,31 +291,6 @@
       </div>
     </section>
 
-    <!-- Insider (C&I / Control Engineer) -->
-    <section id="tab-insider" class="panel hidden">
-      <div class="card">
-        <div class="card-h">Insider actions — engineering workstation
-          <span class="muted tiny" style="margin-left:auto">program-download channel → classified INTERNAL</span>
-        </div>
-        <p class="muted tiny" style="padding:10px 18px 0;line-height:1.5;margin:0">
-          You are the <b>C&amp;I / Control Engineer</b>. From the engineering workstation you can push
-          program-logic changes to the PLC. An <b>unapproved</b> push is real insider drift — Vigilo detects
-          it on the program plane and attributes it to you.
-        </p>
-        <div id="insider-attacks" class="insider-grid"></div>
-      </div>
-      <div class="card">
-        <div class="card-h">Engineering terminal <span class="muted tiny" style="margin-left:auto">scoped to the Vigilo attack CLI · type "help"</span></div>
-        <div class="term-box">
-          <div class="term-out" id="ins-out"><div class="gt-line gt-dim">Scoped terminal ready — only the Vigilo attack CLI runs here.</div></div>
-          <div class="term-input">
-            <span class="term-prompt">engineer@ews:~$</span>
-            <input id="ins-input" autocomplete="off" spellcheck="false" placeholder="python -m logicward.attacker.attacks --host <plc-host> logic-inversion">
-            <button class="btn primary" id="ins-run">Run</button>
-          </div>
-        </div>
-      </div>
-    </section>
 
     <!-- Alerts -->
     <section id="tab-alerts" class="panel hidden">

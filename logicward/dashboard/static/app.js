@@ -11,13 +11,13 @@
   // per-role view — which tabs a role sees + its default landing (least-privilege UX)
   const ROLE_VIEWS = {
     operator:         { tabs: ["plant", "alerts"], home: "plant" },
-    control_engineer: { tabs: ["overview", "plant", "diff", "insider", "alerts"], home: "diff" },
+    control_engineer: { tabs: ["overview", "plant", "diff", "alerts"], home: "diff" },
     network_engineer: { tabs: ["overview", "alerts", "plant"], home: "alerts" },
     soc_analyst:      { tabs: ["overview", "plant", "diff", "alerts", "evidence"], home: "overview" },
     vendor:           { tabs: ["plant", "diff"], home: "plant" },
     ciso:             { tabs: ["overview", "alerts", "evidence", "roles"], home: "overview" },
   };
-  const ALL_TABS = ["overview", "plant", "diff", "insider", "alerts", "roles", "evidence"];
+  const ALL_TABS = ["overview", "plant", "diff", "alerts", "roles", "evidence"];
 
   let cursor = 0;
   const events = [];
@@ -291,7 +291,6 @@
     overview: ["Overview", "Live plant status · impact-ranked detections"],
     plant: ["Live plant", "SCADA mimic · live process + controller load"],
     diff: ["Baseline vs current", "Signed L5X · structural + register diff"],
-    insider: ["Insider actions", "Engineering-workstation attack surface (program plane)"],
     alerts: ["Alerts", "Three detection planes · severity ranked"],
     evidence: ["Evidence log", "Append-only forensic record · who · when · what"],
     roles: ["Roles & access", "OT/ICS functional roles + monitored scopes"],
@@ -1010,50 +1009,8 @@
     }).catch(() => {});
   }
 
-  // ---- Insider tab: engineering-workstation attacks + scoped terminal ----
-  function insOut(text, cls) {
-    const o = $("#ins-out"); if (!o) return;
-    o.appendChild(el("div", "gt-line " + (cls || ""), text));
-    o.scrollTop = o.scrollHeight;
-  }
-  function insiderInit() {
-    const box = $("#insider-attacks");
-    if (box && hasCap("baseline")) {
-      fetch("/api/insider/attacks").then(r => r.json()).then(d => {
-        box.innerHTML = "";
-        (d.attacks || []).forEach(a => {
-          const c = el("div", "insider-atk");
-          c.appendChild(el("div", "ins-name", a.id));
-          c.appendChild(el("div", "ins-desc", a.desc));
-          const btn = el("button", "btn danger", "Push to PLC");
-          btn.onclick = () => {
-            btn.disabled = true;
-            jpost("/api/insider/attack/" + a.id).then(r => {
-              if (r.cmd) insOut("engineer@ews:~$ " + r.cmd, "gt-cmd");
-              insOut(r.ok ? ("[+] " + a.id + " delivered — insider drift now in the alert feed") : ("[!] " + (r.output || "failed")), r.ok ? "gt-ok" : "gt-err");
-              toast(r.ok ? ("Insider push: " + a.id) : "Push failed");
-            }).finally(() => setTimeout(() => (btn.disabled = false), 700));
-          };
-          c.appendChild(btn);
-          box.appendChild(c);
-        });
-      }).catch(() => {});
-    }
-    const inp = $("#ins-input"), run = $("#ins-run");
-    const runIns = () => {
-      const cmd = (inp.value || "").trim(); if (!cmd) return;
-      insOut("engineer@ews:~$ " + cmd, "gt-cmd"); inp.value = "";
-      jpost("/api/insider/exec", { cmd }).then(d => {
-        (d.output || "").split("\n").forEach(line => insOut(line, d.ok ? "gt-out" : "gt-err"));
-      }).catch(e => insOut(e.message, "gt-err"));
-    };
-    if (run) run.addEventListener("click", runIns);
-    if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter") runIns(); });
-  }
-
   // ---- loops ----
   applyRoleView();
-  insiderInit();
   pollEvents(); pollOverview(); pollPlant(); pollTelemetry();
   setInterval(pollEvents, 1000);
   setInterval(pollOverview, 2000);

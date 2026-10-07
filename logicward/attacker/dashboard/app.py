@@ -4,8 +4,8 @@ A completely independent web UI for launching cyber attacks against the
 Raspberry Pi PLC during demonstrations.  Runs on its own port (default 9090)
 and does NOT share any code paths with the SOC dashboard.
 
-    python -m logicward.attacker_dashboard --host 10.119.190.53
-    python -m logicward.attacker_dashboard --host 10.119.190.53 --port 9090
+    python -m logicward.attacker.dashboard --host <plc-host>
+    python -m logicward.attacker.dashboard --host <plc-host> --port 9090
 
 Open http://localhost:9090 to access the attacker console.
 """
@@ -171,8 +171,8 @@ UTILITY_ACTIONS = [
     },
     {
         "id": "clear-alerts",
-        "name": "Clear SOC Alerts",
-        "description": "Delete evidence.jsonl on your laptop so the SOC dashboard shows zero alerts.",
+        "name": "Try to wipe SOC evidence",
+        "description": "Anti-forensics attempt (MITRE ICS T0872): ask the SOC to delete its evidence log. The log is append-only, so this is refused.",
         "icon": "🗑️",
     },
 ]
@@ -185,8 +185,8 @@ def _run_ssh_command(host: str, commands: list[str]) -> str:
         import paramiko
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        password = os.environ.get("PI_PASSWORD", "123456789")
-        username = os.environ.get("PI_USERNAME", "<plc-host>")
+        password = os.environ.get("PI_PASSWORD", "")
+        username = os.environ.get("PI_USERNAME", "pi")
         client.connect(host, username=username, password=password, timeout=10)
         output_lines = []
         for cmd in commands:
@@ -201,6 +201,17 @@ def _run_ssh_command(host: str, commands: list[str]) -> str:
         return "\n".join(output_lines)
     except Exception as exc:
         return f"SSH error: {exc}"
+
+
+# Insider (C&I engineer) attacks — program-download channel -> SOC classifies INTERNAL.
+INSIDER_ATTACKS = {
+    "logic-inversion": "Invert the drum-level trip comparator (LES -> GRT)",
+    "condition-stripping": "Strip the Plant_Running interlock from the flame trip",
+    "coil-hijack": "Redirect the Feedwater_Trip output coil",
+    "rung-injection": "Inject a hidden backdoor rung",
+    "program-setpoint": "Lower the drum-level trip setpoint 220 -> 40 in the program",
+    "branch-restructure": "Regroup the flame trip from AND to OR (weakens the interlock)",
+}
 
 
 def create_app(host: str = "127.0.0.1", modbus_port: int = 5020,
@@ -274,6 +285,32 @@ def create_app(host: str = "127.0.0.1", modbus_port: int = 5020,
             return jsonify({"status": "error",
                             "detail": f"{type(exc).__name__}: {exc}"}), 500
 
+    # ── Insider (engineering workstation) — moved here from the SOC app (Prompt 2.5).
+    # These push program logic through the program-download channel, so the SOC
+    # still classifies them INTERNAL. Launches are logged on this console.
+    @app.get("/api/insider/attacks")
+    def insider_list():
+        return jsonify({"attacks": [{"id": k, "desc": v} for k, v in INSIDER_ATTACKS.items()],
+                        "target": host})
+
+    @app.post("/api/insider/attack/<atk>")
+    def insider_attack(atk):
+        from logicward.attacker.terminal import run_scoped
+        if atk not in INSIDER_ATTACKS:
+            return jsonify({"ok": False, "output": f"unknown insider attack: {atk}"}), 404
+        cmd = f"python -m logicward.attacker.attacks --host {host} --modbus-port {modbus_port} {atk}"
+        ok, out = run_scoped(cmd)
+        app.logger.warning("insider launch: %s ok=%s", cmd, ok)
+        return jsonify({"ok": ok, "output": out, "cmd": cmd})
+
+    @app.post("/api/insider/exec")
+    def insider_exec():
+        from logicward.attacker.terminal import run_scoped
+        data = request.get_json(silent=True) or {}
+        ok, out = run_scoped(data.get("cmd", ""))
+        app.logger.warning("insider exec: %r ok=%s", data.get("cmd", ""), ok)
+        return jsonify({"ok": ok, "output": out})
+
     @app.post("/api/terminal")
     def run_terminal():
         """Scoped terminal — runs an allow-listed Vigilo attack command, returns output."""
@@ -293,9 +330,11 @@ def create_app(host: str = "127.0.0.1", modbus_port: int = 5020,
                 try:
                     res = requests.post("http://127.0.0.1:8080/api/alerts/clear", timeout=3)
                     if res.status_code == 200:
-                        return jsonify({"status": "success", "detail": "Alerts cleared from SOC memory and disk. Refresh SOC dashboard (F5)."})
-                    else:
-                        return jsonify({"status": "error", "detail": f"SOC dashboard returned {res.status_code}"})
+                        return jsonify({"status": "success", "detail": "SOC accepted the wipe (unexpected)."})
+                    return jsonify({"status": "failed",
+                                    "detail": (f"Blocked (HTTP {res.status_code}): the SOC evidence log is append-only "
+                                               "and cannot be deleted remotely. Alerts can only be acknowledged by an "
+                                               "authenticated operator, which is itself logged.")})
                 except Exception as e:
                     return jsonify({"status": "error", "detail": f"Failed to contact SOC dashboard: {e}"})
 
@@ -318,7 +357,7 @@ def create_app(host: str = "127.0.0.1", modbus_port: int = 5020,
                 return jsonify({"status": "success", "detail": out})
 
             elif action_id == "restart-pi":
-                password = os.environ.get("PI_PASSWORD", "123456789")
+                password = os.environ.get("PI_PASSWORD", "")
                 out_parts = []
                 out_parts.append(_run_ssh_command(host, [
                     f"echo '{password}' | sudo -S pkill -f 'python -m logicward' || true",
@@ -351,7 +390,9 @@ def create_app(host: str = "127.0.0.1", modbus_port: int = 5020,
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Vigilo Attacker Dashboard")
-    p.add_argument("--host", default="10.119.190.53", help="Pi IP address")
+    p.add_argument("--host", default=config.PI_HOST, help="PLC host (lab target)")
+    p.add_argument("--bind", default="127.0.0.1",
+                   help="Interface the console listens on (default localhost only)")
     p.add_argument("--port", type=int, default=9090, help="Dashboard port")
     p.add_argument("--modbus-port", type=int, default=5020)
     p.add_argument("--program-port", type=int, default=8081)
@@ -363,11 +404,11 @@ def main() -> None:
     app = create_app(args.host, args.modbus_port, args.program_port,
                      chem_host=args.chem_host, chem_port=args.chem_port)
     print("\n  [*] VIGILO ATTACKER CONSOLE")
-    print(f"  Thermal (Pi) : {args.host}  (Modbus :{args.modbus_port}, Program :{args.program_port})")
+    print(f"  Thermal PLC  : {args.host}  (Modbus :{args.modbus_port}, Program :{args.program_port})")
     print(f"  Chemical (3D): {args.chem_host}:{args.chem_port}")
-    print(f"  Console      : http://localhost:{args.port}/")
+    print(f"  Console      : http://{args.bind}:{args.port}/")
     print()
-    app.run(host="0.0.0.0", port=args.port, threaded=True)
+    app.run(host=args.bind, port=args.port, threaded=True)
 
 
 if __name__ == "__main__":

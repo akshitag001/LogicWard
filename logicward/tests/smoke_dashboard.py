@@ -143,6 +143,8 @@ def main() -> int:
         codes = [rl.post("/login", data={"username": "soc", "password": "wrong"}).status_code
                  for _ in range(6)]
         check(codes[-1] == 429, f"6 bad logins from one IP -> 429 rate limited ({codes})")
+        check(soc.get("/api/insider/attacks").status_code == 404,
+              "2.5: SOC app no longer exposes /api/insider/* (moved to red-team console)")
     finally:
         dash.stop()
 

@@ -249,3 +249,33 @@ async function termRun() {
   const inp = document.getElementById("termInput");
   if (inp) inp.addEventListener("keydown", (e) => { if (e.key === "Enter") termRun(); });
 })();
+
+/* ── Insider (engineering-workstation) attacks (Prompt 2.5) ──────────────── */
+(async function loadInsider() {
+  const grid = document.getElementById("insiderGrid");
+  if (!grid) return;
+  try {
+    const d = await (await fetch("/api/insider/attacks")).json();
+    (d.attacks || []).forEach((a) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = '<h3 class="card-title">' + esc(a.id) + '</h3>' +
+        '<p class="card-desc">' + esc(a.desc) + '</p>';
+      const btn = document.createElement("button");
+      btn.className = "btn-attack";
+      btn.innerHTML = '<span class="btn-label">PUSH TO PLC</span>';
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          const r = await fetch("/api/insider/attack/" + a.id, { method: "POST" });
+          const res = await r.json();
+          if (res.cmd) termWrite('<span class="gt-prompt">engineer@ews:~$</span> ' + esc(res.cmd), "gt-cmd");
+          log((res.ok ? "🕵 " : "✗ ") + "insider: " + a.id, res.ok ? "success" : "error");
+        } catch (e) { log("✗ insider: " + e.message, "error"); }
+        setTimeout(() => (btn.disabled = false), 700);
+      };
+      card.appendChild(btn);
+      grid.appendChild(card);
+    });
+  } catch (e) { /* console not wired to a live PLC */ }
+})();
