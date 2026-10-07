@@ -108,8 +108,9 @@ def map_event(event_type: str, details: dict | None = None) -> dict:
 
     techniques = [primary]
     # program-download family: a register write is just the effect; a program
-    # download is a delivery (T0843) PLUS the effect.
-    if event_type in _PROGRAM_EFFECT and not details.get("register"):
+    # download is a delivery (T0843) PLUS the effect. Skip the duplicate when the
+    # effect already IS Program Download (rung injection).
+    if event_type in _PROGRAM_EFFECT and not details.get("register") and tid != "T0843":
         techniques = [_entry(*_T0843), primary]
 
     m = dict(primary)
