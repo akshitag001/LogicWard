@@ -18,3 +18,6 @@ reportlab>=4.0      # signed PDF forensic report (dashboard/evidence.py)
 psutil>=5.9         # resource plane CPU/RAM (agent/sensors/resource.py); sim via set_sim()
 # scapy>=2.5        # arp_watch live ARP sweep (Pi); dev/tests use ArpWatch.observe()
 # gpiozero>=2.0     # gpio_tamper enclosure switch (Pi only); sim via trigger_sim()
+
+# ── Optional — production WSGI server (logicward/wsgi.py) ─────────────────────
+# waitress>=3.0     # waitress-serve --listen=127.0.0.1:8080 logicward.wsgi:app (Windows)

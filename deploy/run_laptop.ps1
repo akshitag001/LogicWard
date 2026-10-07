@@ -19,6 +19,7 @@ param(
 )
 
 $env:LOGICWARD_EMBED_PLANT = "0"        # read the real Pi, not an in-process plant
+$env:LOGICWARD_INGEST_HOST = "0.0.0.0"  # accept the edge agent's POSTs (split mode)
 $env:LOGICWARD_PI_HOST     = $PiHost    # PROGRAM_URL derives from this automatically
 $env:LOGICWARD_TOKEN       = $Token     # must match the token on the Pi agent
 if ($OpenChemToLan) {

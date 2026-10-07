@@ -44,7 +44,7 @@ def validate_secrets() -> list[str]:
 
 
 # ── Laptop: ingest endpoint + dashboard ───────────────────────────────────────
-INGEST_HOST = _env("INGEST_HOST", "0.0.0.0")
+INGEST_HOST = _env("INGEST_HOST", "127.0.0.1")   # dev binds localhost; set to 0.0.0.0 for split Pi mode
 INGEST_PORT = int(_env("INGEST_PORT", "8080"))
 # Shared secret the agent presents in the X-LogicWard-Token header. Demo-grade —
 # a single static token, documented as such. Change it for any shared network.

@@ -80,3 +80,16 @@ connected, the dashboard shows **"Edge agent: simulated"** rather than an error.
 
 Helper scripts for the hardware path live under `deploy/` (`pi_bootstrap.sh`,
 `pi_tools/`). Replace `<plc-host>` with your PLC host's name/IP.
+
+## Production-style serving
+
+The Flask dev server (`python -m logicward.dashboard.app`) binds `127.0.0.1` by default;
+it only listens on all interfaces when `LOGICWARD_INGEST_HOST` is set (the split Pi mode
+does this so the edge agent can POST events). For a longer-lived deployment, serve the WSGI
+app `logicward/wsgi.py` with a real server (single worker — the bus/engine/plant are
+per-process singletons):
+
+    waitress-serve --listen=127.0.0.1:8080 logicward.wsgi:app   # Windows
+    gunicorn -w 1 -b 127.0.0.1:8080 logicward.wsgi:app          # Linux
+
+Install the optional dependency with `pip install -e ".[prod]"`.
