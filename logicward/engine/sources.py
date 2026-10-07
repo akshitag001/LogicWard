@@ -65,6 +65,10 @@ class EmbeddedPlant:
         """Source IP of the last Modbus write to `tag` (attacker attribution)."""
         return self.ds.writer_for(tag)
 
+    def write_journal(self, cursor: int) -> tuple[list[dict], int]:
+        """Modbus writes since `cursor` (catches change-and-revert inside a poll)."""
+        return self.ds.writes_since(cursor)
+
     def program_writer(self) -> str | None:
         return None  # embedded program writes go direct to live.L5X (no network identity)
 
@@ -90,6 +94,14 @@ class RemotePlant:
         coils = self.client.read_coils(0, len(r2r.COILS))
         return {"holding": {p.tag: hold[p.address] for p in r2r.HOLDING_REGISTERS} if hold else {},
                 "coils": {p.tag: coils[p.address] for p in r2r.COILS} if coils else {}}
+
+    def write_journal(self, cursor: int) -> tuple[list[dict], int]:
+        """Pull the PLC host's write journal since `cursor` (WRITES_PORT endpoint)."""
+        try:
+            d = requests.get(self.writes_url + "/journal", params={"since": cursor}, timeout=1).json()
+            return d.get("entries", []), int(d.get("cursor", cursor))
+        except Exception:  # noqa: BLE001
+            return [], cursor
 
     def writer_for(self, tag: str) -> str | None:
         """Query the Pi's write-attribution map for who last wrote `tag`."""

@@ -72,6 +72,8 @@ def classify_drift(etype: str, details: dict | None, identity: dict | None) -> t
 
     # ── register plane (unauthenticated Modbus write) ──
     if channel == "modbus-write":
+        if details.get("transient"):
+            return "external", "unauthenticated Modbus write reverted within one poll interval — an evasion pattern"
         if safety:
             return "external", "unauthenticated Modbus write defeating a safety function"
         if _is_large(details):

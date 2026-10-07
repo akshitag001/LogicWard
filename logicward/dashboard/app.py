@@ -150,7 +150,8 @@ class Dashboard:
         self.drift = DriftEngine(self.bus, self.signed,
                                  program_source=self.plant.program_source,
                                  register_source=self.plant.register_source,
-                                 who_source=self._who)
+                                 who_source=self._who,
+                                 journal_source=getattr(self.plant, "write_journal", None))
         self.response = ResponseEngine(self.bus, restore_hook=self._restore_baseline_program)
         self.baseline_fim = BaselineFileMonitor(self.baseline_path, self.bus.emit)
 
@@ -279,7 +280,8 @@ class Dashboard:
         self.drift = DriftEngine(self.bus, self.signed,
                                  program_source=self.plant.program_source,
                                  register_source=self.plant.register_source,
-                                 who_source=self._who)
+                                 who_source=self._who,
+                                 journal_source=getattr(self.plant, "write_journal", None))
         self.drift.reset()
         return self.signed
 

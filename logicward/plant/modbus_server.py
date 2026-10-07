@@ -69,6 +69,7 @@ class ThermalDataStore:
         for tag, v in SEED_DISCRETE.items():
             self.discrete_inputs[r2r.BY_TAG[tag].address] = bool(v)
         self.write_log: list[dict] = []
+        self.write_seq = 0            # monotonic cursor over write_log (Prompt 1.6)
         self.last_write_by_addr: dict[tuple[str, int], tuple[str | None, str]] = {}
         self.request_count = 0
 
@@ -122,13 +123,25 @@ class ThermalDataStore:
 
     def log_write(self, fc: int, addr: int, value, unit_id: int, client_ip: str | None = None) -> None:
         ts = datetime.now(timezone.utc).isoformat()
-        self.write_log.append({"time": ts, "fc": f"0x{fc:02X}", "address": addr,
-                               "value": value, "unit_id": unit_id, "client_ip": client_ip})
+        area = "C" if fc == 0x05 else "HR"
+        with self.lock:
+            self.write_seq += 1
+            seq = self.write_seq
+        self.write_log.append({"seq": seq, "time": ts, "fc": f"0x{fc:02X}", "area": area,
+                               "address": addr, "value": value, "unit_id": unit_id,
+                               "client_ip": client_ip})
         if len(self.write_log) > 500:
             self.write_log.pop(0)
         # attribute WHO wrote which register/coil (FC05 -> coil, FC06/10 -> holding)
         self.last_write_by_addr[("C" if fc == 0x05 else "HR", addr)] = (client_ip, ts)
         log.warning(f"[WRITE] FC={fc:02X} addr={addr} val={value} unit={unit_id} from={client_ip}")
+
+    def writes_since(self, cursor: int) -> tuple[list[dict], int]:
+        """Write-journal entries with seq > cursor, plus the new cursor (Prompt 1.6).
+
+        Lets the drift engine see writes that were reverted before its next poll."""
+        entries = [dict(e) for e in list(self.write_log) if e.get("seq", 0) > cursor]
+        return entries, self.write_seq
 
     def writer_for(self, tag: str) -> str | None:
         """Source IP of the last Modbus write to `tag`'s register/coil (or None)."""
@@ -241,7 +254,7 @@ class ModbusTCPHandler:
                 for i in range(count):
                     self.ds.holding_registers[start + i] = struct.unpack(">H", body[i * 2:i * 2 + 2])[0]
             for i in range(count):                   # attribute every register in the block
-                self.ds.log_write(0x06, start + i, "multi", unit, client_ip)
+                self.ds.log_write(0x06, start + i, self.ds.holding_registers[start + i], unit, client_ip)
             return self._resp(tid, unit, struct.pack(">BHH", fc, start, count))
 
         if fc == 0x11:                              # report server id (info leak)
@@ -340,6 +353,12 @@ def serve_writes(ds, port: int | None = None) -> None:
     def writes():
         return jsonify({"writes": {f"{area}:{addr}": {"ip": ip, "ts": ts}
                                    for (area, addr), (ip, ts) in ds.last_write_by_addr.items()}})
+
+    @app.get("/writes/journal")
+    def writes_journal():
+        from flask import request
+        entries, cursor = ds.writes_since(request.args.get("since", default=0, type=int))
+        return jsonify({"entries": entries, "cursor": cursor})
 
     @app.get("/health")
     def health():

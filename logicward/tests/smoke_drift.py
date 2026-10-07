@@ -202,6 +202,37 @@ def main() -> int:
     check(sum(1 for e in p3 if e["type"] == "cyber.logic_inversion") == 1,
           "1.3: SAME inversion re-applied after restore -> alerts again (not silent)")
 
+    # ── Prompt 1.6: change-and-revert inside one poll interval ──────────────
+    import time as _t
+
+    from logicward.attacker.attacks import Attacker
+    from logicward.plant.modbus_server import ModbusTCPServer
+    ds3 = ThermalDataStore()
+    srv = ModbusTCPServer(host="127.0.0.1", port=0, datastore=ds3)
+    srv.start(background=True)
+    try:
+        bus = EventBus()
+        eng = DriftEngine(bus, signed, program_source=lambda: base_xml,
+                          register_source=lambda: reg_snapshot(ds3),
+                          journal_source=ds3.writes_since)
+        check(eng.run_once() == [], "1.6: clean pass with journal -> no events")
+        atk = Attacker("127.0.0.1", srv.port)
+        addr = r2r.BY_TAG["Drum_Level_LL_SP"].address
+        orig = ds3.holding_registers[addr]
+        t0 = _t.time()
+        atk.write_register(addr, 40)
+        atk.write_register(addr, orig)          # revert before the engine polls
+        fast = (_t.time() - t0) < 0.1
+        evs = eng.run_once()
+        tr = [e for e in evs if e["details"].get("transient")]
+        check(fast and len(evs) == 1 and len(tr) == 1 and tr[0]["type"] == "cyber.register_change",
+              f"1.6: write+revert in {(_t.time()-t0)*1000:.0f} ms -> exactly one transient register_change")
+        check(tr and tr[0]["details"]["writes"] == [40, orig] and tr[0]["category"] == "external",
+              "1.6: transient event lists both writes and is classified external")
+        check(eng.run_once() == [], "1.6: journal cursor advances (no repeat on next pass)")
+    finally:
+        srv.stop()
+
     passed = sum(1 for ok, _ in _checks if ok)
     total = len(_checks)
     print(f"\n{'='*52}\n  RESULT: {passed}/{total} checks passed\n{'='*52}")

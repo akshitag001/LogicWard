@@ -42,6 +42,7 @@ INVERSE_OP = {
     "EQU": "NEQ", "NEQ": "EQU",
 }
 _INPUT_OPS = l5x.CONTACTS | l5x.COMPARES
+_BY_AREA_ADDR = {(p.area, p.address): p for p in r2r.HOLDING_REGISTERS + r2r.COILS}
 
 
 def _fmt(op: str, args) -> str:
@@ -66,7 +67,8 @@ class DriftEngine:
                  program_source: Callable[[], bytes],
                  register_source: Callable[[], dict] | None = None,
                  who_source: Callable[[str | None, str], str | None] | None = None,
-                 source: str = "drift_engine"):
+                 source: str = "drift_engine",
+                 journal_source: Callable[[int], tuple[list, int]] | None = None):
         self.bus = bus
         self.signed = signed_baseline
         self.source = source
@@ -81,6 +83,16 @@ class DriftEngine:
         self.program_source = program_source
         self.register_source = register_source
         self.who_source = who_source
+        # Write journal (Prompt 1.6): Modbus writes since our cursor, so a write that
+        # is reverted inside one poll interval is still seen. Start at "now".
+        self.journal_source = journal_source
+        self._journal_cursor = 0
+        self._last_snap: dict = {}
+        if journal_source is not None:
+            try:
+                _, self._journal_cursor = journal_source(10 ** 12)
+            except Exception:  # noqa: BLE001
+                self._journal_cursor = 0
         # State-based dedup (Prompt 1.3): the set of drift keys active *right now*.
         # We emit when a key APPEARS and a cyber.drift_cleared when it DISAPPEARS,
         # so an attack that is restored and then re-applied alerts again.
@@ -95,7 +107,8 @@ class DriftEngine:
         self._structural()
         if self.register_source is not None:
             self._registers()
-        return self._finish_pass()
+        emitted = self._finish_pass()
+        return emitted + self._journal()
 
     def reset(self) -> None:
         """Clear drift state (e.g. after a re-baseline) — next pass re-evaluates."""
@@ -354,6 +367,7 @@ class DriftEngine:
     # -- register (Modbus) --
     def _registers(self) -> list[dict | None]:
         snap = self.register_source() or {}
+        self._last_snap = snap
         base_hold = self.baseline_regs.get("holding", {})
         base_coils = self.baseline_regs.get("coils", {})
         out: list[dict | None] = []
@@ -384,6 +398,58 @@ class DriftEngine:
                 "coil": tag, "baseline": bool(b), "current": bool(cur),
                 "reason": f"Control coil {tag} forced {bool(b)} -> {bool(cur)} over Modbus",
             }, "modbus-write"))
+        return out
+
+    # -- write journal (transient change-and-revert) --
+    def _journal(self) -> list[dict]:
+        """Emit cyber.register_change (transient=True) for writes to baselined
+        registers/coils whose value is back at baseline by the time we poll —
+        the state-based diff cannot see those. Still-drifted writes are skipped
+        (the state-based detector already reports them)."""
+        if self.journal_source is None:
+            return []
+        try:
+            entries, self._journal_cursor = self.journal_source(self._journal_cursor)
+        except Exception:  # noqa: BLE001
+            return []
+        base_hold = self.baseline_regs.get("holding", {})
+        base_coils = self.baseline_regs.get("coils", {})
+        by_tag: dict[str, list[dict]] = {}
+        for e in entries:
+            p = _BY_AREA_ADDR.get((e.get("area"), e.get("address")))
+            if p is None:
+                continue
+            if p.area == "HR" and p.tag not in base_hold:
+                continue
+            if p.area == "C" and (p.tag not in base_coils or p.tag in PLANT_DRIVEN_COILS):
+                continue
+            by_tag.setdefault(p.tag, []).append(e)
+
+        out: list[dict] = []
+        snap = self._last_snap or {}
+        for tag, writes in by_tag.items():
+            p = r2r.BY_TAG[tag]
+            if p.area == "HR":
+                base, cur = base_hold.get(tag), snap.get("holding", {}).get(tag)
+                key = "tag"
+            else:
+                base = bool(base_coils.get(tag))
+                cur = snap.get("coils", {}).get(tag)
+                cur = None if cur is None else bool(cur)
+                key = "coil"
+            if cur is not None and cur != base:
+                continue                      # still drifted -> state-based detector owns it
+            values = [w.get("value") for w in writes]
+            ev = self.bus.emit_new("cyber.register_change", self.source, {
+                key: tag, "baseline": base, "current": cur, "transient": True,
+                "writes": values, "write_count": len(writes),
+                "safety_critical": self._setpoint_safety(tag) if tag.endswith("_SP") else False,
+                "command": f"{writes[0].get('fc')} write @{p.address} values={values}  ({tag})",
+                "reason": (f"Transient Modbus write to {tag}: {values} — back to baseline "
+                           f"before the next poll (change-and-revert)"),
+            }, identity={"who": writes[-1].get("client_ip") or "unknown", "channel": "modbus-write"})
+            if ev:
+                out.append(ev)
         return out
 
     # -- helpers --
