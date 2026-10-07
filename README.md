@@ -189,10 +189,7 @@ Built for the Adani OT Cybersecurity Hackathon 2026. Licensed under the [MIT Lic
 
 <div align="center">
 
-<!-- To show the award photo, drop the file at docs/assets/award-cyber-sanjeevni.jpg
-     and uncomment the next line:
-<img src="docs/assets/award-cyber-sanjeevni.jpg" alt="Runner Up 1 — Adani Innovation Mindstorm 2026–2027, Cyber Sanjeevni" width="640">
--->
+<img src="docs/assets/award-cyber-sanjeevni.jpg" alt="Team receiving the Runner Up 1 award at Adani Innovation Mindstorm 2026–2027, Cyber Sanjeevni" width="640">
 
 🏆 **Adani Innovation Mindstorm 2026–2027 · Cyber Sanjeevni — Runner Up 1**
 <br><sub>Rashtriya Raksha University · ₹3,00,000</sub>
