@@ -127,6 +127,18 @@ def main() -> int:
     second = eng.run_once()
     check(len(first) == 1 and len(second) == 0, "persistent mutation reported once, not every pass")
 
+    # ── Prompt 1.5: safety by allow-list, not by tag name ───────────────────
+    check(sorted(signed["manifest"].get("safety_tags", [])) == l5x.load_safety_tags()
+          and "Vibration_Alarm" in signed["manifest"]["safety_tags"],
+          "1.5: safety allow-list is stored inside the signed manifest")
+    tampered_list = {**signed, "manifest": {**signed["manifest"], "safety_tags": []}}
+    check(not bl.verify(tampered_list), "1.5: editing the safety list breaks the HMAC")
+    renamed = base_text.replace("OTE(Fuel_Trip)", "OTE(Fuel_Out)")
+    evs = run_case(signed, renamed.encode(), base_regs)
+    e = next((x for x in evs if x["type"] == "cyber.coil_hijack"), {})
+    check(e.get("severity") == "critical" and e["details"]["safety_critical"],
+          f"1.5: hijack renaming Fuel_Trip -> Fuel_Out still scored critical (got {e.get('severity')})")
+
     # ── Prompt 1.2: non-ladder routines, non-_SP tags, task scheduling ───────
     st_routine = ('     <Routine Name="Hidden_ST" Type="ST"><STContent>'
                   '<Line Number="0"><![CDATA[Fuel_Trip := 0;]]></Line>'

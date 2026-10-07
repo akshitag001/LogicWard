@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -218,17 +219,50 @@ def _routine_body_sig(element) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def _is_safety_critical(output_coil: str | None) -> bool:
+SAFETY_TAGS_PATH = Path(__file__).resolve().parents[1] / "plant" / "program" / "safety_tags.json"
+_log = logging.getLogger("logicward.l5x")
+_warned_fallback: set[str] = set()
+
+
+def load_safety_tags(path: str | Path | None = None) -> list[str]:
+    """The explicit safety-critical tag allow-list (Prompt 1.5)."""
+    p = Path(path or SAFETY_TAGS_PATH)
+    try:
+        return sorted(json.loads(p.read_text(encoding="utf-8")).get("safety_tags", []))
+    except (OSError, ValueError):
+        return []
+
+
+def _is_safety_critical(output_coil: str | None, safety_tags=None) -> bool:
+    """Safety classification = membership in the explicit allow-list.
+
+    The old name-keyword heuristic ("trip"/"fuel"/"feedwater") is kept ONLY as a
+    fallback for tags not in the list, and logs a warning when used — renaming a
+    coil can no longer silently drop its severity for listed tags.
+    """
     if not output_coil:
         return False
-    lc = output_coil.lower()
-    return any(key in lc for key in ("trip", "fuel", "feedwater"))
+    tags = set(load_safety_tags() if safety_tags is None else safety_tags)
+    if output_coil in tags:
+        return True
+    hit = any(key in output_coil.lower() for key in ("trip", "fuel", "feedwater"))
+    if hit and output_coil not in _warned_fallback:
+        _warned_fallback.add(output_coil)
+        _log.warning("safety classification for %r used the keyword fallback "
+                     "(tag not in safety_tags.json)", output_coil)
+    return hit
 
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
 
-def parse(xml: bytes | str) -> L5XProgram:
-    """Parse an L5X document into an `L5XProgram`."""
+def parse(xml: bytes | str, safety_tags: list[str] | None = None) -> L5XProgram:
+    """Parse an L5X document into an `L5XProgram`.
+
+    `safety_tags` overrides the shipped allow-list (the drift engine passes the
+    list stored in the signed baseline manifest).
+    """
+    if safety_tags is None:
+        safety_tags = load_safety_tags()
     if isinstance(xml, str):
         xml = xml.encode("utf-8")
     root = etree.fromstring(xml)
@@ -282,7 +316,7 @@ def parse(xml: bytes | str) -> L5XProgram:
                     rungs.append(Rung(
                         number=number, text=text, comment=comment,
                         instructions=instrs, output_op=out_op, output_coil=out_coil,
-                        safety_critical=_is_safety_critical(out_coil),
+                        safety_critical=_is_safety_critical(out_coil, safety_tags),
                         logic_tree=tree,
                     ))
                 routines[rname] = sorted(rungs, key=lambda r: r.number)

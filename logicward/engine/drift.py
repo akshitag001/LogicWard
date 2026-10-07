@@ -71,7 +71,10 @@ class DriftEngine:
         self.signed = signed_baseline
         self.source = source
         m = signed_baseline["manifest"]
-        self.baseline_prog = l5x.parse(m["l5x"].encode("utf-8"))
+        # Safety allow-list comes from the SIGNED manifest (Prompt 1.5); older
+        # manifests without it fall back to the shipped safety_tags.json.
+        self.safety_tags = m.get("safety_tags") or l5x.load_safety_tags()
+        self.baseline_prog = l5x.parse(m["l5x"].encode("utf-8"), safety_tags=self.safety_tags)
         self.baseline_hash = m["structural_hash"]
         self.baseline_setpoints = dict(self.baseline_prog.setpoints)
         self.baseline_regs = m.get("registers", {})
@@ -158,7 +161,7 @@ class DriftEngine:
 
     # -- structural (L5X) --
     def _structural(self) -> list[dict | None]:
-        live = l5x.parse(self.program_source())
+        live = l5x.parse(self.program_source(), safety_tags=self.safety_tags)
         # fast path: identical logic and identical setpoints -> nothing structural
         if l5x.structural_hash(live) == self.baseline_hash:
             return []
@@ -294,7 +297,9 @@ class DriftEngine:
         if b.output_coil != live.output_coil:
             out.append(self._emit("cyber.coil_hijack", {
                 "rung_id": rid, "baseline": b.output_coil, "current": live.output_coil,
-                "safety_critical": b.safety_critical or live.safety_critical,
+                # moving an output AWAY from a listed safety tag is always safety-critical
+                "safety_critical": (b.output_coil in self.safety_tags
+                                    or b.safety_critical or live.safety_critical),
                 "reason": f"Output coil repointed {b.output_coil} -> {live.output_coil}",
             }, "program-download"))
 

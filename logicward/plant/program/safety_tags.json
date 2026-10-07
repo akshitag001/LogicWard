@@ -1,0 +1,9 @@
+{
+  "_comment": "Explicit allow-list of safety-critical tags for ThermalPlant_Safety. Copied into the HMAC-signed baseline manifest at lock time, so it cannot be edited without breaking the signature.",
+  "safety_tags": [
+    "Feedwater_Trip", "Main_Steam_Trip", "Turbine_Trip", "Fuel_Trip", "Condenser_Trip",
+    "Vibration_Alarm",
+    "Drum_Level_LL_SP", "Steam_Press_HH_SP", "Turbine_Overspeed_SP",
+    "Condenser_Vac_LO_SP", "Bearing_Vib_HI_SP"
+  ]
+}

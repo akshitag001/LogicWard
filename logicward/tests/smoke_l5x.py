@@ -43,8 +43,10 @@ def main() -> int:
     check(ops == ["XIC", "LES", "OTE"], f"rung 0 instructions {ops}")
     check(r0.output_coil == "Feedwater_Trip", f"rung 0 output coil ({r0.output_coil})")
     check(r0.safety_critical is True, "rung 0 (a Trip) flagged safety_critical")
-    check(rungs[5].output_coil == "Vibration_Alarm" and rungs[5].safety_critical is False,
-          "rung 5 (an Alarm) NOT safety_critical")
+    check(rungs[5].output_coil == "Vibration_Alarm" and rungs[5].safety_critical is True,
+          "rung 5 (Vibration_Alarm) IS safety_critical via the explicit allow-list (Prompt 1.5)")
+    check(l5x._is_safety_critical("Cooling_Pump_Stop") is False,
+          "unlisted, non-keyword coil is NOT safety_critical")
 
     # 2) volatile invariance -------------------------------------------------
     dated = re.sub(r'ExportDate="[^"]*"', 'ExportDate="Wed Jul 22 10:00:00 2026"', text)

@@ -52,6 +52,8 @@ def capture(program_xml: bytes | str, registers: dict | None = None) -> dict:
         "l5x": program_xml.decode("utf-8"),
         "setpoints": {k: prog.setpoints[k] for k in sorted(prog.setpoints)},
         "registers": registers or {},
+        # explicit safety allow-list, signed with the rest of the manifest (Prompt 1.5)
+        "safety_tags": l5x.load_safety_tags(),
     }
     return {"manifest": manifest, "algo": ALGO, "signature": sign(_canonical_bytes(manifest))}
 
