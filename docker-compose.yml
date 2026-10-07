@@ -1,0 +1,14 @@
+services:
+  logicward:
+    build: .
+    image: logicward:latest
+    ports:
+      - "8080:8080"   # SOC dashboard + ingest
+      - "9090:9090"   # red-team console
+    environment:
+      LOGICWARD_EMBED_PLANT: "1"
+      LOGICWARD_MULTISITE: "1"
+      LOGICWARD_INGEST_HOST: "0.0.0.0"
+      LOGICWARD_CONSOLE_BIND: "0.0.0.0"
+    # Demo mode is on by default (ephemeral session key). For a persistent/secured
+    # run set LOGICWARD_DEMO_MODE=0 and provide LOGICWARD_SECRET/TOKEN/HMAC_KEY.
