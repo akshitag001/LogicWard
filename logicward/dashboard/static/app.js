@@ -606,10 +606,9 @@
     const meta = el("div", "alert-meta");
     const sid = eventSite(e);
     meta.appendChild(el("span", "site-chip s-" + sid, (SITE_SHORT[sid] || sid)));
-    if (e.mitre && e.mitre.technique_id) {
-      const m = el("span", "mitre-tag", e.mitre.technique_id + " " + e.mitre.technique_name);
-      meta.appendChild(m);
-    }
+    const techs = (e.mitre && e.mitre.techniques) || (e.mitre && e.mitre.technique_id ? [e.mitre] : []);
+    techs.filter(t => t.technique_id && t.technique_id !== "N/A").forEach(t =>
+      meta.appendChild(el("span", "mitre-tag", t.technique_id + " " + t.technique_name)));
     const who = e.identity && e.identity.who;
     if (who && who !== "unknown") meta.appendChild(el("span", "who-chip", "by " + who));
     meta.appendChild(el("span", null, "src: " + e.source));

@@ -46,7 +46,7 @@ _MAP: dict[str, tuple[str, str, str, bool]] = {
 _MAP["cyber.program_file_modified"] = ("Persistence", "T0889", "Modify Program", True)
 # Tampering LogicWard's own signed baseline is detector evasion, not a PLC-program
 # technique — left N/A rather than mapped to a fabricated ID.
-_MAP["cyber.baseline_tamper"] = ("N/A", "N/A", "Baseline integrity tamper (no direct ATT&CK for ICS technique)", False)
+_MAP["cyber.baseline_tamper"] = ("Inhibit Response Function", "T0872", "Indicator Removal on Host", True)
 _MAP["cyber.baseline_relocked"] = ("N/A", "N/A", "Approved re-lock (not an adversary technique)", False)
 _MAP["baseline.initial_capture"] = ("N/A", "N/A", "Trust-on-first-use baseline capture (not an adversary technique)", False)
 _MAP["cyber.drift_cleared"] = ("N/A", "N/A", "Drift returned to baseline (recovery, not an adversary technique)", False)
@@ -54,18 +54,63 @@ _MAP["cyber.drift_cleared"] = ("N/A", "N/A", "Drift returned to baseline (recove
 # our own response actions are not adversary techniques
 _UNMAPPED = ("N/A", "N/A", "Not an adversary technique", False)
 
+# ── Rule-based refinements verified against the ATT&CK for ICS matrix ──────────
+# Source: https://attack.mitre.org/matrices/ics/  (checked 2026-10-07)
+#   * Program download is BOTH a delivery (T0843 Program Download, Lateral Movement)
+#     and an effect (T0889 Modify Program / T0836 Modify Parameter) — we list both.
+#   * physical.link_up is a RECOVERY, not an adversary action -> N/A.
+#   * T0848 Rogue Master only applies when the unknown device actually sends
+#     commands; a bare unknown MAC is "unauthorized device on the OT segment".
+#   * T0872 Indicator Removal on Host covers tampering our own evidence/baseline.
+_T0843 = ("Lateral Movement", "T0843", "Program Download", True)
+_T0872 = ("Inhibit Response Function", "T0872", "Indicator Removal on Host", True)
+
+# effect technique per program-plane mutation type (delivery T0843 is added for all)
+_PROGRAM_EFFECT = {
+    "cyber.logic_inversion", "cyber.condition_stripping", "cyber.coil_hijack",
+    "cyber.rung_injection", "cyber.branch_restructure", "cyber.setpoint_drift",
+    "cyber.tag_value_change", "cyber.routine_added", "cyber.routine_removed",
+    "cyber.routine_modified", "cyber.task_change",
+}
+
+
+def _entry(tactic, tid, tname, verified):
+    return {"tactic": tactic, "technique_id": tid, "technique_name": tname, "verified": verified}
+
 
 def map_event(event_type: str, details: dict | None = None) -> dict:
     """Return the ATT&CK-for-ICS mapping for an event type.
 
-    `details` is accepted for future rule-based refinement but is unused today —
-    the mapping stays explainable. `verified` is True when the technique ID has
-    been confirmed against the live ICS matrix.
+    The returned dict keeps the single top-level keys (tactic/technique_id/
+    technique_name/verified) for the dashboard, and adds a `techniques` list when
+    more than one technique applies (e.g. program download = delivery + effect).
+    `details` refines ambiguous cases (rogue master, program vs register channel).
     """
+    details = details or {}
+
+    # physical.link_up — recovery, not an attack
+    if event_type == "physical.link_up":
+        base = _entry("N/A", "N/A", "Link restored (recovery, not an adversary technique)", False)
+        return {**base, "techniques": [base]}
+
+    # rogue device — Rogue Master only if it actually issued commands
+    if event_type == "physical.rogue_device":
+        if details.get("sent_commands") or details.get("ip_in_write_log"):
+            base = _entry("Initial Access", "T0848", "Rogue Master", True)
+        else:
+            base = _entry("Initial Access", "N/A",
+                          "Unauthorized device on the OT segment (no commands observed)", False)
+        return {**base, "techniques": [base]}
+
     tactic, tid, tname, verified = _MAP.get(event_type, _UNMAPPED)
-    return {
-        "tactic": tactic,
-        "technique_id": tid,
-        "technique_name": tname,
-        "verified": verified,
-    }
+    primary = _entry(tactic, tid, tname, verified)
+
+    techniques = [primary]
+    # program-download family: a register write is just the effect; a program
+    # download is a delivery (T0843) PLUS the effect.
+    if event_type in _PROGRAM_EFFECT and not details.get("register"):
+        techniques = [_entry(*_T0843), primary]
+
+    m = dict(primary)
+    m["techniques"] = techniques
+    return m

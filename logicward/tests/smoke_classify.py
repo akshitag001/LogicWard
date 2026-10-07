@@ -55,6 +55,20 @@ def main() -> int:
                         identity={"who": "127.0.0.1", "channel": "program-download"})
     check("program-download classified internal", prog.get("category") == "internal")
 
+    # ── Prompt 3.3: MITRE mapping corrections ───────────────────────────────
+    from logicward.engine import mitre_map as mm
+    check("physical.link_up -> N/A (recovery, not DoS)", mm.map_event("physical.link_up")["technique_id"] == "N/A")
+    check("rogue device, no commands -> N/A not Rogue Master",
+          mm.map_event("physical.rogue_device", {})["technique_id"] == "N/A")
+    check("rogue device that sent commands -> T0848",
+          mm.map_event("physical.rogue_device", {"sent_commands": True})["technique_id"] == "T0848")
+    check("program mutation lists delivery+effect (T0843,T0889)",
+          [t["technique_id"] for t in mm.map_event("cyber.logic_inversion")["techniques"]] == ["T0843", "T0889"])
+    check("register-plane setpoint change is effect-only (T0836)",
+          [t["technique_id"] for t in mm.map_event("cyber.setpoint_drift", {"register": True})["techniques"]] == ["T0836"])
+    check("baseline tamper -> T0872 Indicator Removal on Host",
+          mm.map_event("cyber.baseline_tamper")["technique_id"] == "T0872")
+
     total = _passed + _failed
     print("=" * 52)
     print(f"RESULT: {_passed}/{total} checks passed")
