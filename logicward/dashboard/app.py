@@ -639,21 +639,61 @@ def create_app(dashboard: Dashboard | None = None, embed: bool | None = None) ->
     def api_alerts_acked():
         return jsonify({"acked": sorted(dash.acked_ids)})
 
-    @app.get("/api/evidence/report.pdf")
-    @require_cap("evidence")
-    def api_report():
-        site = request.args.get("site")
-        events = dash.bus.snapshot()
+    def _build_report(site):
+        # Build from the FULL evidence log on disk (not the capped in-memory buffer).
+        if dash.bus.evidence is not None:
+            events = [e for e in dash.bus.evidence.read_all() if not e.get("checkpoint")]
+        else:
+            events = dash.bus.snapshot()
         if site:
-            events = evidence_mod.query(events, site=site, limit=100000)
+            events = evidence_mod.query(events, site=site, limit=10 ** 7)
         prof = registry.BY_ID.get(site)
+        chain_ok, chain_bad = (dash.bus.evidence.verify() if dash.bus.evidence else (True, None))
+        head = dash.bus.evidence._head if dash.bus.evidence else ""
+        from logicward.dashboard import report_sign
+        fp = report_sign.load_or_create_key()
         meta = {"controller": (prof.name if prof else dash.signed["manifest"]["controller"]),
                 "baseline_hash": dash.signed["manifest"]["structural_hash"],
                 "baseline_integrity": "VALID" if bl.verify(dash.signed) else "TAMPERED",
                 "site": (prof.name if prof else "All sites")}
-        pdf = evidence_mod.build_pdf(events, meta)
+        chain = {"status": "VERIFIED" if chain_ok else f"BROKEN at line {chain_bad}",
+                 "head": head, "fingerprint": report_sign._fingerprint(report_sign.public_pem(fp))}
+        pdf = evidence_mod.build_pdf(events, meta, chain=chain)
+        return pdf
+
+    @app.get("/api/evidence/report.pdf")
+    @require_cap("evidence")
+    def api_report():
+        site = request.args.get("site")
+        pdf = _build_report(site)
         fname = f"logicward_{site or 'all-sites'}_report.pdf"
         return Response(pdf, mimetype="application/pdf",
+                        headers={"Content-Disposition": f"attachment; filename={fname}"})
+
+    @app.get("/api/evidence/report.sig")
+    @require_cap("evidence")
+    def api_report_sig():
+        from logicward.dashboard import report_sign
+        pdf = _build_report(request.args.get("site"))
+        return jsonify(report_sign.sign_pdf(pdf))
+
+    @app.get("/api/evidence/report.zip")
+    @require_cap("evidence")
+    def api_report_zip():
+        import io
+        import zipfile
+
+        from logicward.dashboard import report_sign
+        site = request.args.get("site")
+        pdf = _build_report(site)
+        manifest = report_sign.sign_pdf(pdf)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("report.pdf", pdf)
+            z.writestr("report.sig", report_sign.sig_json(manifest))
+            z.writestr("report_pubkey.pem", manifest["public_key_pem"])
+        fname = f"logicward_{site or 'all-sites'}_report.zip"
+        return Response(buf.getvalue(), mimetype="application/zip",
                         headers={"Content-Disposition": f"attachment; filename={fname}"})
 
     # -- actions (role-gated) --

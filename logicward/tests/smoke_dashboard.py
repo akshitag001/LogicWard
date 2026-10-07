@@ -101,6 +101,24 @@ def main() -> int:
         pdf = soc.get("/api/evidence/report.pdf")
         check(pdf.status_code == 200 and pdf.data[:4] == b"%PDF", "SOC can export signed PDF forensic report")
 
+        # -- Prompt 3.2: the PDF is really Ed25519-signed (bundle = canonical artifact) --
+        import io
+        import json as _json
+        import zipfile
+
+        from logicward.dashboard.report_sign import verify_report
+        zp = soc.get("/api/evidence/report.zip")
+        check(zp.status_code == 200 and zp.data[:2] == b"PK", "3.2: report.zip bundles pdf + sig + pubkey")
+        zf = zipfile.ZipFile(io.BytesIO(zp.data))
+        zpdf = zf.read("report.pdf"); zsig = _json.loads(zf.read("report.sig"))
+        zpub = zf.read("report_pubkey.pem")
+        check(zsig.get("algo") == "ed25519" and verify_report(zpdf, zsig, zpub),
+              "3.2: signature verifies against the generated PDF (Ed25519)")
+        check(not verify_report(zpdf[:-1] + bytes([zpdf[-1] ^ 1]), zsig, zpub),
+              "3.2: flipping one PDF byte fails verification")
+        check(soc.get("/api/evidence/report.sig").get_json().get("fingerprint", "").startswith("sha256:"),
+              "3.2: report.sig exposes the signing-key fingerprint")
+
         ack = cpost(soc, "/api/response/ack", json={"ref": evs[0]["event_id"]})
         check(ack.status_code == 200, "response: acknowledge action works")
 

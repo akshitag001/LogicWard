@@ -45,7 +45,7 @@ def summary(events: list[dict]) -> dict:
     return counts
 
 
-def build_pdf(events: list[dict], meta: dict | None = None) -> bytes:
+def build_pdf(events: list[dict], meta: dict | None = None, chain: dict | None = None) -> bytes:
     meta = meta or {}
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm, bottomMargin=16 * mm,
@@ -61,8 +61,12 @@ def build_pdf(events: list[dict], meta: dict | None = None) -> bytes:
              Paragraph(f"Generated {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC · "
                        f"Controller: {meta.get('controller', '?')} · "
                        f"Baseline: {meta.get('baseline_hash', '?')[:23]}… · "
-                       f"Baseline integrity: {meta.get('baseline_integrity', '?')}", sub),
-             Spacer(1, 8)]
+                       f"Baseline integrity: {meta.get('baseline_integrity', '?')}", sub)]
+    if chain:
+        story.append(Paragraph(
+            f"Evidence chain: {chain.get('status', '?')} · head {str(chain.get('head', ''))[:20]}… · "
+            f"report signature: Ed25519 (key {chain.get('fingerprint', '?')})", sub))
+    story.append(Spacer(1, 8))
 
     counts = summary(events)
     sev_tbl = Table([["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
